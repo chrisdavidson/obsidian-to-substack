@@ -21,18 +21,23 @@ def _normalize(text: str) -> str:
     return " ".join(text.split())
 
 
-def find_article_html(directory: Path) -> Path | None:
+DEFAULT_REGEN = Path(".cache/regen")
+
+
+def find_article_html(directory: Path, regen_root: Path = DEFAULT_REGEN) -> Path | None:
     """Return the pipeline output for an article directory, if present.
 
     Prefers the archived `article.html` alongside the source. Falls back to a
-    `_regen/` subtree, which is where EVID-04 re-runs land for the articles
-    whose original output was never kept.
+    repo-local regeneration cache — deliberately not the vault, which stays
+    read-only. Two articles (`axiom-load-bearing`,
+    `Taxonom_Supports_Strategic_Decisions`) never had their output kept, so
+    EVID-04 regenerates them there.
     """
     candidate = directory / "article.html"
     if candidate.exists():
         return candidate
 
-    regenerated = sorted(directory.glob("_regen/*/article.html"))
+    regenerated = sorted(Path(regen_root).glob(f"{directory.name}/*/article.html"))
     return regenerated[0] if regenerated else None
 
 

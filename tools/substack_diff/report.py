@@ -144,9 +144,11 @@ def render(
     skipped: dict[str, str],
     generated: str,
     patterns_by_article: dict[str, list] | None = None,
+    regenerated: list[str] | None = None,
 ) -> str:
     """Render the full FINDINGS.md document."""
     patterns_by_article = patterns_by_article or {}
+    regenerated = regenerated or []
     sections = [
         "# Substack Conversion Findings",
         "",
@@ -169,11 +171,32 @@ def render(
         "`vanished in publication` — the pipeline emitted it, the published post lacks it.  ",
         "`appeared only in publication (hand-added)` — the author added it in the composer.",
         "",
-        "> **Caveat.** These diffs cannot settle DIAG-01 or FMT-01. Published posts are",
+        "> **Caveat 1.** These diffs cannot settle DIAG-01 or FMT-01. Published posts are",
         "> post-repair artifacts, so a clean diff means \"nothing needed fixing *or* the fix",
         "> is invisible at construct-count granularity\" — not \"the pipeline output was",
         "> correct.\" Those requirements need a live paste of current output.",
         "",
+        "> **Caveat 2.** Construct counts measure structure, not correctness. Three real",
+        "> defects — percent-encoded image paths, stale vault-relative path prefixes, and",
+        "> literal inline HTML drawn into rendered tables — produce a *broken image* rather",
+        "> than a changed element count, and this diff cannot see any of them. They were",
+        "> found by the preflight check and by looking at a rendered PNG.",
+        "",
+    ]
+
+    if regenerated:
+        sections += [
+            "> **Caveat 3.** "
+            f"{len(regenerated)} article(s) had no archived output and were regenerated "
+            "with the *current* code, so their rows reflect today's pipeline rather than "
+            "the code that produced the published post. Their defects may already be "
+            "fixed. Affected: "
+            + ", ".join(f"`{name}`" for name in sorted(regenerated))
+            + ".",
+            "",
+        ]
+
+    sections += [
         "## Confirmed defect patterns",
         "",
     ]

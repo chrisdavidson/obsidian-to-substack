@@ -130,7 +130,7 @@ Committed, tested, and verified as far as it can be without you:
 | 3 | DIAG-02 | **Done.** `.svg` and `.png` embeds both resolve |
 | 4 | FMT-02 | **Built, needs step 1.** Duplicate title heading dropped |
 | 5 | GRD-02 | **Done.** Preflight warnings; all 17 articles convert clean |
-| 5 | GRD-03 | **Done.** 184 tests, up from 89 |
+| 5 | GRD-03 | **Done.** 192 tests, up from 89 |
 | 5 | ACPT-01 | **Fixture built, needs step 1** |
 
 Still fully open, because they are yours: **TBL-05** (step 3), **DIAG-01**
@@ -148,7 +148,8 @@ Still fully open, because they are yours: **TBL-05** (step 3), **DIAG-01**
 
 ### One thing to know
 
-I created `_regen/` directories inside two vault articles
-(`axiom-load-bearing`, `Taxonom_Supports_Strategic_Decisions`) because their
-original pipeline output was never kept and EVID-04 required it. They are safe
-to delete; the diff tool will just skip those two articles again.
+Two articles (`axiom-load-bearing`, `Taxonom_Supports_Strategic_Decisions`)
+never had their pipeline output kept, so EVID-04 regenerates them on demand
+into `.cache/regen/` — inside this repo, gitignored. **Your vault is never
+written to.** Because that regeneration uses today's code rather than the code
+that produced the published post, `FINDINGS.md` flags those two rows.

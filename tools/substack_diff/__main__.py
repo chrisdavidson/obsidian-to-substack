@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import datetime as _datetime
 import logging
+import subprocess
 import sys
 from pathlib import Path
 
@@ -43,6 +44,40 @@ def build_map(vault: Path, publication: str, map_path: Path) -> int:
     return 0
 
 
+def _regenerate(directory: Path, entry: dict, regen_root: Path) -> Path | None:
+    """Re-run the converter for an article whose output was never kept.
+
+    Writes to a repo-local cache rather than the vault, which stays read-only.
+    """
+    source = entry.get("source_markdown")
+    if not source or not (directory / source).is_file():
+        return None
+
+    destination = Path(regen_root) / directory.name
+    logger.info("regenerating %s (no archived output)", directory.name)
+    try:
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "obsidian_to_substack.convert",
+                str(directory),
+                "--file",
+                source,
+                "--output-dir",
+                str(destination),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, OSError) as exc:
+        logger.error("regeneration failed for %s: %s", directory.name, exc)
+        return None
+
+    return mapping.find_article_html(directory, regen_root)
+
+
 def run_diff(
     vault: Path,
     publication: str,
@@ -51,6 +86,7 @@ def run_diff(
     only: str | None,
     cache_dir: Path,
     refresh: bool,
+    regen_root: Path,
 ) -> int:
     entries = mapping.load(map_path)
     if only:
@@ -63,13 +99,21 @@ def run_diff(
     compared: list[str] = []
     skipped: dict[str, str] = {}
     patterns_by_article: dict[str, list] = {}
+    regenerated: list[str] = []
 
     for name, entry in sorted(entries.items()):
         directory = vault / name
-        article_html = mapping.find_article_html(directory)
+        article_html = mapping.find_article_html(directory, regen_root)
         if article_html is None:
-            skipped[name] = "no archived `article.html` — re-run the converter (EVID-04)"
+            article_html = _regenerate(directory, entry, regen_root)
+        if article_html is None:
+            skipped[name] = "no archived output and regeneration failed (EVID-04)"
             continue
+
+        # Output sourced from the regeneration cache reflects today's code, not
+        # the code that produced the published post.
+        if Path(regen_root).resolve() in article_html.resolve().parents:
+            regenerated.append(name)
 
         try:
             published_html = fetch_post(
@@ -96,7 +140,9 @@ def run_diff(
     generated = _datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
-        report.render(findings, compared, skipped, generated, patterns_by_article),
+        report.render(
+            findings, compared, skipped, generated, patterns_by_article, regenerated
+        ),
         encoding="utf-8",
     )
 
@@ -117,6 +163,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--map", dest="map_path", type=Path, default=mapping.DEFAULT_MAP)
     parser.add_argument("--out", dest="output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE)
+    parser.add_argument(
+        "--regen-dir",
+        type=Path,
+        default=mapping.DEFAULT_REGEN,
+        help="Where to regenerate output for articles with no archived article.html",
+    )
     parser.add_argument("--build-map", action="store_true", help="Regenerate the article map")
     parser.add_argument("--all", action="store_true", help="Diff every mapped article")
     parser.add_argument("--article", help="Diff a single article directory by name")
@@ -145,6 +197,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.article,
                 args.cache_dir,
                 args.refresh,
+                args.regen_dir,
             )
     except FetchError as exc:
         print(f"Error: {exc}", file=sys.stderr)
