@@ -14,6 +14,7 @@ import webbrowser
 from pathlib import Path
 
 from obsidian_to_substack.frontmatter import parse_frontmatter
+from obsidian_to_substack.image_assets import copy_raster_embeds
 from obsidian_to_substack.obsidian_syntax import transform_obsidian_syntax
 from obsidian_to_substack.svg_export import export_all_svgs, validate_png
 from obsidian_to_substack.table_handler import (
@@ -94,6 +95,12 @@ def convert_article(
         else:
             logger.warning("Invalid PNG generated for %s, skipping", name)
     image_map = valid_pngs
+
+    # Embeds that already name a raster file are not rasterized by
+    # export_all_svgs, so copy them in — otherwise the <img src> points at a
+    # file that is not next to article.html and pastes broken (DIAG-02).
+    search_dirs = [source.parent, Path(svg_dir)] if svg_dir else [source.parent]
+    image_map.update(copy_raster_embeds(body, search_dirs, str(article_output)))
 
     tables = extract_tables(body)
     if datawrapper_token and tables:
