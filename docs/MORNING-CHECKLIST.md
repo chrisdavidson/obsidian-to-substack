@@ -56,6 +56,7 @@ more than a clean run.
 | 13 | SVG diagram | The Obsidian→Substack diagram appears and is **centred** |✅ 2026-08-08 — appears, and is centred. Not answerable from this fixture (the diagram is wider than the column, so it fills it either way); settled by a narrow-image probe in which **all three** embed styles came out centred. Substack centres images itself — alignment is not controllable from this tool. See `docs/FINDINGS-MANUAL.md` |
 | 14 | Markdown image | The second copy of the diagram appears (tests `![alt](path)` syntax) |X |
 | 15 | Wikilink | "Some Other Note" is *italic text*, not a broken link |X |
+| 16 | Footnote | The `[^1]` marker in "Closing" appears as a small superscript, and the footnote text (starting "Guidelines for the Construction…") appears at the bottom of the post where you can correlate it with the marker | |
 
 **If items 1, 7–11, 13, or 14 pass**, the fixes I made overnight are confirmed
 working. If any fail, note what you saw — that is a finding, and it goes in

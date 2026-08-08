@@ -1,3 +1,70 @@
+### Footnotes were broken in the corpus, and unwarned
+
+**Requirement:** ACPT-01, GRD-02
+
+Found by the v1.0 milestone audit (2026-08-08): the torture fixture's own
+requirement text names footnotes as a construct it must exercise, and the
+fixture contained none. `tests/fixtures/torture_test/torture-test.md`
+carried zero footnote syntax before this fix. The requirement was ticked
+without the artifact that makes it true.
+
+That gap surfaced a live defect. One article in the 46-file corpus uses
+footnotes: `Taxonomies - domains, controlled vocabulary, relationships.md`
+(1 of 46). Converted during the audit, it emitted the literal marker
+`<p>…standard[^1].</p>` and the definition as an unconverted paragraph
+`<p>[^1] - Guidelines for… https://www.niso.org/…</p>` — both would have
+pasted into Substack as visible garbage, the URL not even linkified.
+
+Root cause: `MARKDOWN_EXTENSIONS` includes `"footnotes"`
+(`render_html.py:13`), so the capability is present. The source writes
+`[^1] - text` (a hyphen); python-markdown's footnotes extension requires
+`[^1]: text` (a colon). The extension never matches, and unmatched footnote
+syntax degrades to plain text rather than erroring — so the pipeline
+reported success while emitting broken output. `preflight.py` had no check
+for it, so GRD-02's "warn before a known-broken construct reaches the
+clipboard" never fired.
+
+A second, more dangerous defect was found while planning the fix, and was
+invisible until fixing the first one exposed it: normalizing the hyphen
+form to colon form alone made things *worse*, not better. python-markdown's
+footnotes extension emits `<div class="footnote"><hr /><ol>...</ol></div>`
+for a correctly matched definition. That div has two children (`hr` + `ol`)
+and no `.string`, so `strip_unsupported_elements`' generic `UNSUPPORTED_TAGS`
+loop — which unwraps a div with `.string` but decomposes one without — took
+the decompose branch and deleted the entire footnotes section, marker and
+text both. Before this fix the author at least saw the footnote's text as
+an ugly literal paragraph; after normalizing without also fixing the strip,
+they would have seen a bare superscript and no content at all — silent
+content loss replacing cosmetic damage, and undetectable by an
+orphaned-marker check because no literal `[^1]` remains once normalization
+runs.
+
+Fix: `normalize_footnote_definitions` (new, `obsidian_syntax.py`) rewrites
+the hyphen/en-dash/em-dash/double-hyphen separator forms to colon form,
+gated on the label being referenced elsewhere in the document and
+fence-aware so footnote-shaped lines inside fenced code are left alone. It
+runs first in `transform_obsidian_syntax`, ahead of `convert_em_dashes`,
+which would otherwise destroy the ` -- ` separator before the normalizer
+saw it. `strip_unsupported_elements` now unwraps `div.footnote` — and
+removes footnote-backref anchors outright, so their `↩` glyph can't strand
+as residual text — before the generic div loop runs, so the footnotes
+section survives intact. Two new `preflight.py` checks warn on each failure
+mode independently: a literal marker surviving into rendered text, and
+reference markup surviving with no footnotes section beneath it. Both the
+normalize-and-warn combination is deliberate — normalizing alone silently
+reinterprets the author's source, and warning alone leaves them hand-editing
+the vault, which is what this tool exists to prevent.
+
+**Open question, not resolved by this fix.** Substack has no rendering API,
+so it remains unknown whether (a) python-markdown's footnote output
+survives the paste at all, and (b) whether an `<hr>` + `<ol>` at the bottom,
+with internal anchors stripped, reads as a footnotes section a reader can
+correlate with the `<sup>` marker. The torture fixture now carries a
+footnote reference and hyphen-form definition (mirroring the real corpus
+construct, sentinel text `Z39.19-2005`) and `docs/MORNING-CHECKLIST.md` has
+a new row asking exactly this. **ACPT-01 is not closed by this fix** — it
+closes only when a footnote survives a real Substack paste.
+
 ### The stripped H1's text never reached the output
 
 **Requirement:** FMT-02
