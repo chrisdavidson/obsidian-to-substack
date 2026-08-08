@@ -55,6 +55,46 @@ class TestSpanParsing:
         assert Span("x").style == "regular"
 
 
+class TestInlineHtmlSpans:
+    """`table_handler._parse_row` converts markers to HTML before rendering.
+
+    Without HTML awareness the renderer drew the literal text
+    `<strong>Bold cell</strong>` into the image.
+    """
+
+    def test_strong_tag_becomes_a_bold_span(self):
+        spans = parse_spans("<strong>Bold cell</strong>")
+        assert spans == [Span("Bold cell", bold=True)]
+
+    def test_em_tag_becomes_an_italic_span(self):
+        assert parse_spans("<em>quiet</em>") == [Span("quiet", italic=True)]
+
+    def test_b_and_i_tags_are_honored(self):
+        assert parse_spans("<b>x</b>")[0].bold
+        assert parse_spans("<i>y</i>")[0].italic
+
+    def test_nested_tags_combine(self):
+        spans = parse_spans("<strong><em>both</em></strong>")
+        assert spans[0].bold and spans[0].italic
+
+    def test_html_and_plain_text_mix(self):
+        spans = parse_spans("before <strong>bold</strong> after")
+        assert [s.text.strip() for s in spans] == ["before", "bold", "after"]
+        assert [s.bold for s in spans] == [False, True, False]
+
+    def test_no_html_tag_text_survives_into_the_image(self):
+        rendered = "".join(s.text for s in parse_spans("<strong>Bold</strong>"))
+        assert "<" not in rendered and ">" not in rendered
+
+    def test_backticks_are_stripped(self):
+        """The renderer has no monospace variant; a literal backtick reads as a typo."""
+        assert parse_spans("`code`") == [Span("code")]
+
+    def test_backticks_inside_a_styled_run_are_stripped(self):
+        spans = parse_spans("<strong>`code`</strong>")
+        assert spans[0].text == "code" and spans[0].bold
+
+
 class TestRenderTable:
     def test_renders_a_readable_png(self, tmp_path):
         out = tmp_path / "t.png"

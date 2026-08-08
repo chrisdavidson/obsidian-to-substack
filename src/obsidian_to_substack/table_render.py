@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from bs4 import BeautifulSoup, NavigableString
 from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
@@ -112,25 +113,59 @@ class FontSet:
         return ascent + descent
 
 
+BOLD_TAGS = {"strong", "b"}
+ITALIC_TAGS = {"em", "i"}
+CODE_TICKS = re.compile(r"`([^`]*)`")
+
+
 def parse_spans(cell: str) -> list[Span]:
-    """Split a cell into styled runs, honoring **bold** and *italic*."""
+    """Split a cell into styled runs.
+
+    Cells arrive already converted to inline HTML by `table_handler._parse_row`
+    (`<strong>`, `<em>`), but raw Markdown markers survive in sources that were
+    not converted, so both forms are handled. Backticks are stripped — the
+    renderer has no monospace variant, and a literal backtick reads as a typo.
+    """
+    soup = BeautifulSoup(cell, "html.parser")
     spans: list[Span] = []
-    remaining = cell
+
+    def walk(node, bold: bool, italic: bool) -> None:
+        for child in node.children:
+            if isinstance(child, NavigableString):
+                text = CODE_TICKS.sub(r"\1", str(child))
+                if bold or italic:
+                    if text:
+                        spans.append(Span(text, bold, italic))
+                else:
+                    spans.extend(_markdown_spans(text))
+            else:
+                walk(
+                    child,
+                    bold or child.name in BOLD_TAGS,
+                    italic or child.name in ITALIC_TAGS,
+                )
+
+    walk(soup, False, False)
+    return [s for s in spans if s.text] or [Span("")]
+
+
+def _markdown_spans(text: str) -> list[Span]:
+    """Apply Markdown bold/italic markers to a plain run."""
+    spans: list[Span] = []
     cursor = 0
 
-    for match in BOLD_PATTERN.finditer(cell):
+    for match in BOLD_PATTERN.finditer(text):
         if match.start() > cursor:
-            spans.extend(_italic_spans(cell[cursor : match.start()]))
+            spans.extend(_italic_spans(text[cursor : match.start()]))
         inner = match.group(1) or match.group(2) or ""
-        italic_inner = ITALIC_PATTERN.sub(lambda m: m.group(1) or m.group(2) or "", inner)
-        spans.append(Span(italic_inner, bold=True, italic=inner != italic_inner))
+        stripped = ITALIC_PATTERN.sub(lambda m: m.group(1) or m.group(2) or "", inner)
+        spans.append(Span(stripped, bold=True, italic=stripped != inner))
         cursor = match.end()
 
-    remaining = cell[cursor:]
-    if remaining:
-        spans.extend(_italic_spans(remaining))
+    if cursor < len(text):
+        spans.extend(_italic_spans(text[cursor:]))
 
-    return [s for s in spans if s.text] or [Span(cell)]
+    return spans
 
 
 def _italic_spans(text: str) -> list[Span]:
