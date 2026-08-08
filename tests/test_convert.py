@@ -13,6 +13,7 @@ from obsidian_to_substack.convert import (
     convert_article,
     convert_directory,
     copy_html_to_clipboard,
+    copy_title_to_primary,
     slugify,
 )
 
@@ -230,3 +231,62 @@ class TestCopyHtmlToClipboard:
             copied_html = mock_run.call_args[1]["input"].decode("utf-8")
             assert "data:image/png;base64," in copied_html
             assert 'src="photo.png"' not in copied_html
+
+
+class TestCopyTitleToPrimary:
+    """The title rides X11's PRIMARY selection, not the clipboard.
+
+    Substack does not hoist a leading H1 into its title field (probed
+    2026-08-08), so the title must be pasted by hand. X11 holds one clipboard,
+    so copying the printed title out of the terminal would destroy the body
+    HTML that --copy just placed there. PRIMARY is independent of CLIPBOARD, so
+    one run can hand over both: Ctrl+V for the body, middle-click for the title.
+    """
+
+    def test_uses_primary_selection_as_plain_text(self, tmp_path):
+        with (
+            patch("shutil.which", return_value="/usr/bin/xclip"),
+            patch("subprocess.run") as mock_run,
+        ):
+            copy_title_to_primary("Torture Test: Every Construct")
+            argv = mock_run.call_args[0][0]
+            assert argv == ["xclip", "-selection", "primary"]
+            # No -t text/html: the title field takes plain text.
+            assert "-t" not in argv
+            assert mock_run.call_args[1]["input"] == b"Torture Test: Every Construct"
+
+    def test_stdio_is_not_inherited(self, tmp_path):
+        # Same daemon-holds-the-pipe stall as the clipboard copy; see
+        # TestCopyHtmlToClipboard.test_xclip_stdio_is_not_inherited.
+        with (
+            patch("shutil.which", return_value="/usr/bin/xclip"),
+            patch("subprocess.run") as mock_run,
+        ):
+            copy_title_to_primary("A Title")
+            kwargs = mock_run.call_args[1]
+            assert kwargs["stdout"] is subprocess.DEVNULL
+            assert kwargs["stderr"] is not None
+            assert kwargs["stderr"] is not subprocess.PIPE
+
+    def test_failure_is_not_fatal(self, capsys):
+        """A lost title is an inconvenience; a lost body is a wasted run."""
+
+        def fail(*args, **kwargs):
+            kwargs["stderr"].write(b"Error: Can't open display:\n")
+            raise subprocess.CalledProcessError(1, "xclip")
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/xclip"),
+            patch("subprocess.run", side_effect=fail),
+        ):
+            copy_title_to_primary("A Title")  # must not raise SystemExit
+
+        assert "Can't open display" in capsys.readouterr().err
+
+    def test_empty_title_is_skipped(self):
+        with (
+            patch("shutil.which", return_value="/usr/bin/xclip"),
+            patch("subprocess.run") as mock_run,
+        ):
+            copy_title_to_primary("")
+            mock_run.assert_not_called()
