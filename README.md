@@ -5,9 +5,9 @@ Convert Obsidian Markdown articles into Substack-ready HTML.
 Prose moves from Obsidian to Substack fine by hand. Everything else doesn't:
 tables lose their structure, SVG diagrams aren't supported at all, and Obsidian's
 `![[embed]]` and `[[wikilink]]` syntax means nothing to Substack's editor. This
-tool handles that payload — it rasterizes diagrams, extracts tables (optionally
-publishing them as live Datawrapper charts), rewrites Obsidian-specific syntax,
-and emits HTML you can paste straight into the Substack composer.
+tool handles that payload — it rasterizes diagrams, renders tables to images,
+rewrites Obsidian-specific syntax, and emits HTML you can paste straight into
+the Substack composer.
 
 ## Requirements
 
@@ -68,7 +68,6 @@ MIME type so the rich-text editor keeps the formatting.
 | `--file` | — | Process a single `.md` file instead of the whole directory |
 | `--svg-dir` | `<directory>/svg/` | Override the SVG source directory |
 | `--dpi` | `192` | PNG export resolution |
-| `--datawrapper` | off | Publish tables as Datawrapper charts (see below) |
 | `--copy` | off | Copy the HTML to the clipboard (requires `xclip`) |
 | `--open` | off | Open the result in your browser |
 | `--dry-run` | off | Report what would happen without writing anything |
@@ -76,27 +75,11 @@ MIME type so the rich-text editor keeps the formatting.
 
 ### Tables
 
-Substack's composer will not accept a pasted HTML table. By default each
-Markdown table is rendered to a PNG — honoring column alignment and inline
-bold/italic — and embedded as an image, which is what the composer does accept.
-The CSV is written alongside it, so the Datawrapper route stays open without
-re-running the converter.
-
-### Datawrapper charts
-
-Without `--datawrapper`, tables are rendered as images as described above.
-
-With `--datawrapper`, each table is created, populated, and published as a
-Datawrapper chart, and the article embeds the published result instead. This
-requires an API token in the environment:
-
-```bash
-export DATAWRAPPER_API_TOKEN=...
-obsidian-to-substack ~/vault/articles --datawrapper
-```
-
-Get a token at [app.datawrapper.de/account/api-tokens](https://app.datawrapper.de/account/api-tokens).
-The token is only ever read from the environment — never from a file in this repo.
+Substack's composer will not accept a pasted HTML table. Each Markdown table
+is rendered to a PNG — honoring column alignment and inline bold/italic — and
+embedded as an image, which is what the composer does accept. The same table
+is also written out as a CSV, a standalone data sidecar you can open in a
+spreadsheet or reuse elsewhere.
 
 ## What gets transformed
 
@@ -104,8 +87,7 @@ The token is only ever read from the environment — never from a file in this r
   `title` field drives the document title.
 - **SVG diagrams** — every `.svg` in the article's `svg/` directory is rasterized
   to PNG and size-validated (Substack rejects oversized images).
-- **Tables** — pipe tables are rendered to PNG (or published to Datawrapper)
-  and exported to CSV.
+- **Tables** — pipe tables are rendered to PNG and exported to CSV.
 - **`![[image.svg]]` and `![[image.png]]` embeds** — rewritten to
   `<figure>`/`<img>`. SVGs are rasterized; raster files are copied into the
   output directory so the reference resolves. Markdown `![alt](path)` images
@@ -117,10 +99,17 @@ The token is only ever read from the environment — never from a file in this r
 - **` -- `** — converted to a proper em dash.
 - **Unsupported HTML** — stripped, so nothing silently breaks in the composer.
 
+## Non-goals
+
+Datawrapper was evaluated as a table-rendering route and retired on
+2026-08-08: worse image at Substack's column width, an extra secret to
+manage, and an external publish on every run. Full evidence is in
+[docs/FINDINGS-MANUAL.md](docs/FINDINGS-MANUAL.md).
+
 ## Development
 
 ```bash
-uv run pytest                                    # 184 tests, 88% coverage
+uv run pytest                                    # 201 tests, 88% coverage
 uv run pytest --cov=src --cov-report=term-missing
 ```
 

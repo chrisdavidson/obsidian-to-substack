@@ -31,8 +31,7 @@ recorded, and that varies article to article.
 - **Platform**: `--copy` shells out to `xclip`, so clipboard support is Linux/X11 only —
   acceptable while the audience is one person
 
-- **Secrets**: `DATAWRAPPER_API_TOKEN` is read from the environment only; `*.key` is
-  gitignored
+- **Secrets**: `*.key` is gitignored
 
 - **Planning artifacts**: `.planning/` is gitignored by deliberate choice — this repo is
   headed to GitHub and planning is local workflow state. GSD commit steps on planning

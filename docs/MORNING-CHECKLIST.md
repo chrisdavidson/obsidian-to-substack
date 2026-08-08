@@ -81,28 +81,31 @@ If it is not good enough, tell me what is wrong with it.
 
 ---
 
-## 3. Datawrapper — closes TBL-05
+## 3. Datawrapper — closed 2026-08-08 (TBL-05)
 
-This is the one genuinely open question I could not touch. The `--datawrapper`
-path publishes each table as a Datawrapper chart and embeds it. My expectation
-is that Substack strips the iframe on paste and you get nothing — but that is an
-assumption, and TBL-05 exists to settle it.
+No action needed here — this one settled itself. Four runs against the
+`propositions-axiom-relationship` table answered the open question: an
+omitted flag first produced an ordinary conversion, then a stale token gave
+`401 Unauthorized`, then a fresh token gave `403 Forbidden` (the token was
+missing the `chart:read` scope Datawrapper needs to export the PNG — each of
+those partial-success runs also left a published chart orphaned in the
+account), and finally a token with the right scope succeeded.
 
-```bash
-export DATAWRAPPER_API_TOKEN=...   # your token
-uv run obsidian-to-substack ~/Obsidian/BrainBank/4_Archive/"Published Articles"/propositions-axiom-relationship \
-  --file propositions-axiom-relationship.md --output-dir ./output-dw --datawrapper --copy
-```
+That success run showed the flag never emitted the iframe TBL-05 was written
+to test — it downloaded a Datawrapper PNG and embedded it with an `<img>`,
+same as the local path, just worse: smaller (1200x800 fixed canvas vs. the
+local renderer's 2802x407), lower density at Substack's column width, taller
+in the post from dead canvas space, and carrying a repeated title and a
+"Created with Datawrapper" credit the local render doesn't add. The local
+renderer wins on every measured axis.
 
-| # | What to look at | Expect | Result |
-|---|---|---|---|
-| 1 | Where the table belongs | Does *anything* appear? A chart, a link, or nothing at all? |X |
-| 2 | If something appears | Is it interactive, a static image, or a bare URL? |X |
+**Verdict:** `--datawrapper` is retired — the flag, its code path, and the
+module are gone from the CLI. Full evidence and the comparison table are in
+`docs/FINDINGS-MANUAL.md`. Nothing here needs a paste to confirm.
 
-**Then decide:** if the embed survives and looks good, `--datawrapper` stays and
-gets documented. If it pastes as nothing, we retire the flag rather than leave a
-trap in the CLI. Either answer closes TBL-05 — there is no wrong outcome, only
-an unrecorded one.
+One thing left for you, not this change: the API token can be revoked and the
+orphaned charts (roughly 3, including chart id `DOkTX`) deleted from your
+Datawrapper account whenever you get to it.
 
 ---
 
@@ -135,7 +138,7 @@ Committed, tested, and verified as far as it can be without you:
 | 5 | GRD-03 | **Done.** 192 tests, up from 89 |
 | 5 | ACPT-01 | **Fixture built, needs step 1** |
 
-Still fully open, because they are yours: **TBL-05** (step 3), **DIAG-01**
+Still fully open, because they are yours: **DIAG-01**
 (step 1, items 13–14), **FMT-01** (step 1, items 1–6, 12, 15), **DIAG-03** and
 **FMT-02**'s verification, **ACPT-02** (step 2), **ACPT-03** (step 4).
 
