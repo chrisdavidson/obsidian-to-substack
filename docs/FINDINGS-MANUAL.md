@@ -155,6 +155,30 @@ could only be answered in the composer. It does.
 Do not "simplify" this back to one selection. The second selection is the
 whole point.
 
+### Known limitations at acceptance
+
+**Requirement:** ACPT-03
+
+Nothing was repaired by hand in the 2026-08-08 acceptance pass. Every
+construct in the torture fixture and in `propositions-axiom-relationship` was
+marked as surviving the paste, and the one failure — the missing title — was
+fixed in the tool rather than worked around.
+
+Three limitations remain. None is a repair; each is a property of the platform
+or the environment, recorded here rather than silently absorbed:
+
+1. **The title is placed by hand.** Substack never fills its title field from
+   pasted body content. `--copy` puts the title on the X11 primary selection
+   so it is one middle-click away, but it remains a gesture separate from the
+   body paste. No route removes it.
+2. **Image alignment is not controllable.** Substack centres every image
+   itself regardless of markup, so no output this tool produces can left- or
+   right-align an image in a post.
+3. **`--copy` is Linux/X11 only**, and the title hand-off additionally depends
+   on the browser honouring middle-click paste of PRIMARY — confirmed working
+   2026-08-08, but not guaranteed elsewhere. The printed `Title:` line is the
+   fallback, body-paste-first.
+
 ### Formatting survives the paste intact
 
 **Requirement:** FMT-01

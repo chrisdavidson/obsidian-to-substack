@@ -124,6 +124,28 @@ Datawrapper account whenever you get to it.
 If you had to fix *anything* by hand in steps 1–3, write it here rather than
 just fixing it. That is the habit this whole milestone exists to establish.
 
+**2026-08-08: nothing was repaired by hand.** Every construct in steps 1 and 2
+was marked as surviving the paste, and no cell in either table records an edit
+made in the composer. The one failure in that pass — the missing title — was
+fixed in the tool rather than worked around, and is recorded as the first
+finding in `docs/FINDINGS-MANUAL.md`.
+
+Three **known limitations** remain. None is a repair; each is a property of the
+platform or the environment, recorded here rather than silently absorbed:
+
+1. **The title is placed by hand.** Substack never fills its title field from
+   pasted body content — probed directly. `--copy` puts the title on the X11
+   primary selection so it is one middle-click away, but it is still a separate
+   gesture from the body paste. There is no route that removes it.
+2. **Image alignment is not controllable.** Substack centres every image
+   itself, regardless of markup. No output this tool can produce will left- or
+   right-align an image in a post.
+3. **`--copy` is Linux/X11 only**, and the title hand-off additionally depends
+   on the browser honouring middle-click paste of the primary selection
+   (confirmed working 2026-08-08). Elsewhere, the title is still printed on the
+   `Title:` line — paste the body first, or selecting that text replaces the
+   clipboard.
+
 ```
 Construct:
 What the tool produced:
@@ -154,22 +176,23 @@ Your 2026-08-08 pass marked every line, item 13 included. **DIAG-01** and
 observed and written down, and both now are, in `docs/FINDINGS-MANUAL.md`.
 **TBL-01**, **TBL-05** and **FMT-02** are confirmed by the same pass.
 
-Four are left, and all four are yours to judge rather than mine to tick:
+On 2026-08-08 the author ticked the remaining five — **TBL-04**, **DIAG-03**,
+**ACPT-01**, **ACPT-02**, **ACPT-03**. That is **21 of 21 v1 requirements
+complete**. The judgment each one turned on:
 
-- **ACPT-01** and **ACPT-02** turn on your own bar: "pastes into a Substack
-  draft with **no manual repair**." Nothing needed repairing, but the title
-  still has to be copied into Substack's title field by hand. That is a
-  platform step rather than a repair of the output — your call whether it
-  clears the bar.
-- **DIAG-03** ("any confirmed diagram defect is fixed and verified against a
-  real paste") and **ACPT-03** ("any repair still required is recorded as a
-  known limitation") both look vacuously satisfied — no diagram defect was
-  observed and section 4 above is empty. Closing a requirement because nothing
-  went wrong is a call for you to make.
-- **TBL-04** is unblocked but unspent: you said the generated table is good
-  enough, so the `![[classification-table 1.png]]` line can come out of the
-  source and stop being maintained twice. That edit is in your vault, not this
-  repo.
+- **ACPT-01 / ACPT-02** hinge on "no manual repair". Nothing was repaired. The
+  title is still placed by hand, but it is one middle-click and it is a
+  property of Substack, not a defect in the output — so it is recorded as a
+  known limitation in section 4 rather than counted as repair.
+- **DIAG-03** had no confirmed diagram defect to fix.
+- **ACPT-03** is satisfied by section 4's three recorded limitations.
+- **TBL-04** asked that the author *no longer need* a duplicate table image.
+  They don't. Deleting `![[classification-table 1.png]]` from the vault source
+  is cleanup that can happen whenever — it is not a blocker, and that edit is
+  in the vault, not this repo.
+
+Also outstanding outside this repo: revoke the Datawrapper API token and delete
+the ~3 charts orphaned by the 403 runs (including `DOkTX`).
 
 ### Defects found and fixed
 
