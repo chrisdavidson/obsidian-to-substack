@@ -57,8 +57,19 @@ A typical run — convert one article and put it on the clipboard:
 obsidian-to-substack ~/vault/articles --file my-post.md --copy
 ```
 
-Then paste into Substack with `Ctrl+V`. The clipboard copy uses the `text/html`
-MIME type so the rich-text editor keeps the formatting.
+That loads both X11 selections, so pasting into Substack takes two gestures:
+
+- click into the **body** and press `Ctrl+V` — the article, copied as
+  `text/html` so the rich-text editor keeps the formatting
+- click into the **title field** and **middle-click** — the article's title as
+  plain text
+
+Substack never fills its title field from pasted body content, so the title has
+to be placed by hand. Putting it on the primary selection rather than the
+clipboard means one run covers both, instead of the title copy clobbering the
+article. If middle-click paste is disabled in your browser, the title is also
+printed on the `Title:` line — but paste the body first, or selecting that text
+will replace the clipboard.
 
 ### Options
 
@@ -68,7 +79,7 @@ MIME type so the rich-text editor keeps the formatting.
 | `--file` | — | Process a single `.md` file instead of the whole directory |
 | `--svg-dir` | `<directory>/svg/` | Override the SVG source directory |
 | `--dpi` | `192` | PNG export resolution |
-| `--copy` | off | Copy the HTML to the clipboard (requires `xclip`) |
+| `--copy` | off | Body HTML to the clipboard, title to the primary selection (requires `xclip`) |
 | `--open` | off | Open the result in your browser |
 | `--dry-run` | off | Report what would happen without writing anything |
 | `-v`, `--verbose` | off | Verbose logging |

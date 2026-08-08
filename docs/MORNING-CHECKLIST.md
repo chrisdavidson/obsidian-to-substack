@@ -24,14 +24,24 @@ information per minute.
 uv run obsidian-to-substack tests/fixtures/torture_test --file torture-test.md --output-dir ./output --copy
 ```
 
-Then open a **new Substack draft** and press `Ctrl+V`.
+Then open a **new Substack draft**. One run loads both X11 selections, so it
+takes two gestures:
+
+- click into the **body** → `Ctrl+V`
+- click into the **title field** → **middle-click**
+
+Substack never fills the title itself (probed 2026-08-08 — a pasted `<h1>`
+lands in the body, not the title bar), so the title has to be placed by hand.
+If middle-click paste is disabled in your browser, copy the `Title:` line the
+CLI prints — but do the body **first**, because selecting terminal text
+replaces the clipboard and would destroy the body payload.
 
 Check each line. Mark ✅ or ❌ directly in this file — a ❌ with a note is worth
 more than a clean run.
 
 | # | What to look at | Expect | Result |
 |---|---|---|---|
-| 1 | Very top of the body | No title heading in the body — copy the `Title:` line the CLI prints ("Torture Test: Every Construct") into Substack's own title field, then paste the body below it |This is not populating, i did a copy and paste and the title element on substack did not populate, everything else did — RESOLVED 2026-08-08: a body paste can never fill Substack's title field; the CLI now prints the title on its own line to copy across |
+| 1 | Very top of the body | No title heading in the body; the title arrives in the title field by middle-click ("Torture Test: Every Construct") |This is not populating, i did a copy and paste and the title element on substack did not populate, everything else did — RESOLVED 2026-08-08: a body paste can never fill Substack's title field, confirmed by probe. `--copy` now puts the title on the X11 primary selection so it is one middle-click away |
 | 2 | "Emphasis and inline marks" | bold, *italic*, ***bold italic***, `inline code`, and the link all render |X |
 | 3 | Same section | The em dash renders as one long dash, not `--` |X |
 | 4 | Headings | H2/H3/H4 are visibly different sizes and the hierarchy is intact |X |
