@@ -107,6 +107,44 @@ def wrap_html(body: str, title: str = "") -> str:
     return HTML_TEMPLATE.format(title=title, body=body)
 
 
+def _normalize_title(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def strip_duplicate_title(body_html: str, title: str = "") -> str:
+    """Drop a leading H1 that acts as the article's title.
+
+    Obsidian sources often open with `# The Article Title`. Substack renders
+    its own title above the post body, so pasting that H1 produces a duplicate
+    heading the author has to delete by hand — observed in 5 of 17 published
+    articles (docs/FINDINGS.md, `duplicate_title_h1`).
+
+    A leading H1 is treated as a title when it is the document's *only* H1.
+    Articles that use `#` for every section have many H1s, and there the first
+    one is a real section heading. That rule classifies all 17 articles in the
+    corpus correctly; matching against `title` alone does not, because Obsidian
+    sources carry no frontmatter title and authors reword titles when
+    publishing.
+    """
+    soup = BeautifulSoup(body_html, "html.parser")
+    headings = soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
+    if not headings or headings[0].name != "h1":
+        return body_html
+
+    first = headings[0]
+    sole_h1 = len([h for h in headings if h.name == "h1"]) == 1
+    matches_title = bool(title) and _normalize_title(
+        first.get_text(" ", strip=True)
+    ) == _normalize_title(title)
+
+    if not (sole_h1 or matches_title):
+        return body_html
+
+    logger.info("Dropped duplicate title heading: %s", first.get_text(strip=True))
+    first.decompose()
+    return str(soup)
+
+
 def strip_unsupported_elements(html: str) -> str:
     """Remove HTML elements that Substack cannot render."""
     soup = BeautifulSoup(html, "html.parser")

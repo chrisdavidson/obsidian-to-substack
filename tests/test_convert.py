@@ -45,9 +45,14 @@ class TestConvertArticle:
 
             html = Path(result["html_path"]).read_text()
             assert "<!DOCTYPE html>" in html
-            assert "Sample Article Title" in html
             assert "![[" not in html
             assert "[[" not in html
+
+            # The fixture's sole `# Sample Article Title` H1 is the article
+            # title. Substack renders its own title above the body, so it must
+            # survive in <title> but not as a duplicate heading in the body.
+            assert "<title>" in html
+            assert "<h1>Sample Article Title</h1>" not in html
 
             metadata = json.loads(Path(result["metadata_path"]).read_text())
             assert "tags" in metadata

@@ -6,6 +6,8 @@ import re
 import logging
 from pathlib import Path
 
+from .table_render import render_table
+
 logger = logging.getLogger(__name__)
 
 TABLE_ROW_PATTERN = re.compile(r"^\s*\|.*\|\s*$")
@@ -83,6 +85,30 @@ def extract_tables(text: str) -> list[tuple[int, int, str, list[list[str]]]]:
     return tables
 
 
+def parse_alignments(raw_text: str) -> list[str]:
+    """Read column alignment from a table's separator row.
+
+    `:---` is left, `:---:` is center, `---:` is right. Returns an empty list
+    when the block has no separator row.
+    """
+    for line in raw_text.split("\n"):
+        if not _is_separator(line):
+            continue
+        alignments = []
+        for cell in _parse_row(line):
+            marker = cell.strip()
+            starts = marker.startswith(":")
+            ends = marker.endswith(":")
+            if starts and ends:
+                alignments.append("center")
+            elif ends:
+                alignments.append("right")
+            else:
+                alignments.append("left")
+        return alignments
+    return []
+
+
 def table_to_csv(parsed_rows: list[list[str]], output_path: str) -> str:
     """Write parsed table rows to a CSV file. Returns the output path."""
     path = Path(output_path)
@@ -120,6 +146,56 @@ def replace_tables_with_placeholders(
 
         placeholder = f"<!-- TABLE {table_num}: See {csv_name} for Datawrapper import -->"
         lines[start:end + 1] = [placeholder]
+
+    return "\n".join(lines)
+
+
+def replace_tables_with_images(
+    text: str,
+    tables: list[tuple[int, int, str, list[list[str]]]],
+    output_dir: str,
+    scale: float = 1.0,
+) -> str:
+    """Replace each table with a rendered PNG figure, and export the CSV too.
+
+    This is the default table path. Substack's composer will not accept a
+    pasted HTML table, so the table is rendered to an image the same way the
+    author used to do by hand. The CSV is still written alongside it, so the
+    Datawrapper route stays available without a re-run.
+
+    Tables are processed in reverse order to preserve line numbers.
+    """
+    if not tables:
+        return text
+
+    out_dir = Path(output_dir)
+    lines = text.split("\n")
+
+    for idx, (start, end, raw, parsed_rows) in enumerate(reversed(tables), 1):
+        table_num = len(tables) - idx + 1
+        table_to_csv(parsed_rows, str(out_dir / f"table-{table_num}.csv"))
+
+        png_name = f"table-{table_num}.png"
+        try:
+            render_table(
+                parsed_rows,
+                str(out_dir / png_name),
+                alignments=parse_alignments(raw),
+                scale=scale,
+            )
+        except (ValueError, OSError) as exc:
+            logger.error(
+                "Table %d could not be rendered (%s); leaving a placeholder",
+                table_num,
+                exc,
+            )
+            lines[start:end + 1] = [
+                f"<!-- TABLE {table_num}: render failed, see table-{table_num}.csv -->"
+            ]
+            continue
+
+        figure = f'<figure><img src="{png_name}" alt="Table {table_num}"></figure>'
+        lines[start:end + 1] = [figure]
 
     return "\n".join(lines)
 

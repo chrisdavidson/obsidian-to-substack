@@ -19,9 +19,15 @@ from obsidian_to_substack.svg_export import export_all_svgs, validate_png
 from obsidian_to_substack.table_handler import (
     extract_tables,
     replace_tables_with_embeds,
+    replace_tables_with_images,
     replace_tables_with_placeholders,
 )
-from obsidian_to_substack.render_html import render_to_html, strip_unsupported_elements, wrap_html
+from obsidian_to_substack.render_html import (
+    render_to_html,
+    strip_duplicate_title,
+    strip_unsupported_elements,
+    wrap_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,12 +104,15 @@ def convert_article(
             article_title=article_title,
         )
     else:
-        body = replace_tables_with_placeholders(body, tables, str(article_output))
+        body = replace_tables_with_images(
+            body, tables, str(article_output), scale=dpi / 96
+        )
 
     body = transform_obsidian_syntax(body, image_map=image_map)
 
     html_body = render_to_html(body)
     title = metadata.get("title", source.stem.replace("-", " "))
+    html_body = strip_duplicate_title(html_body, title)
     html_doc = wrap_html(html_body, title=title)
     html_doc = strip_unsupported_elements(html_doc)
 
