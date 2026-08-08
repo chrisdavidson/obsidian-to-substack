@@ -89,11 +89,12 @@ def convert_article(
     # resolved value feeds the head title element, wrap_html, the written
     # metadata.json, and the CLI's Title line, so none of them can drift
     # apart.
-    resolved_title = (
-        extract_leading_title(body)
-        or metadata.get("title", "")
-        or source.stem.replace("-", " ")
-    )
+    authored_title = extract_leading_title(body) or metadata.get("title", "")
+    resolved_title = authored_title or source.stem.replace("-", " ")
+
+    # Preflight cannot see which source won — the rendered <title> looks the
+    # same either way — so the fallback is reported to it explicitly (GRD-02).
+    title_from_slug = not authored_title
 
     image_map: dict[str, str] = {}
     if svg_dir is None:
@@ -142,7 +143,9 @@ def convert_article(
         json.dumps(written_metadata, indent=2, default=str), encoding="utf-8"
     )
 
-    warnings = preflight.check(html_doc, article_output)
+    warnings = preflight.check(
+        html_doc, article_output, title_from_slug=title_from_slug
+    )
 
     result = {
         "slug": slug,

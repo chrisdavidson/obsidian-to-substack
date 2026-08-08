@@ -182,8 +182,58 @@ def _check_footnotes(soup: BeautifulSoup) -> list[Warning_]:
     return warnings
 
 
-def check(html: str, base_dir: str | Path) -> list[Warning_]:
-    """Run every preflight check against rendered output."""
+def _check_slug_title(soup: BeautifulSoup, title_from_slug: bool) -> list[Warning_]:
+    """Warn when the title fell back to the filename AND reads as a slug.
+
+    The fallback on its own is not a defect and must not warn: 20 of the 25
+    published articles supply neither a frontmatter `title:` nor a single
+    leading H1, so all 20 take their title from the filename — and all 20
+    read correctly, because their filenames are written as sentence-cased
+    headlines, punctuation and all. Warning on the fallback alone would fire
+    on 80% of known-good output, which is the noise `_check_footnotes`
+    already refuses to make.
+
+    Requiring the resolved title to contain no uppercase letter narrows that
+    to 3 of the 25 — all genuinely weak titles. Crude, but measured; do not
+    "simplify" the uppercase condition away without re-measuring, or this
+    check goes back to warning on correct output.
+
+    `title_from_slug` has to be passed in: the resolved title is in the
+    document, but nothing in the HTML records which of the three sources
+    produced it, and a `<title>` matching the filename is equally consistent
+    with a deliberate frontmatter title.
+    """
+    if not title_from_slug:
+        return []
+
+    title_tag = soup.find("title")
+    if title_tag is None:
+        return []
+
+    title = title_tag.get_text(strip=True)
+    if not title or any(char.isupper() for char in title):
+        return []
+
+    return [
+        Warning_(
+            "slug_title",
+            "GRD-02",
+            f"The title {title!r} was taken from the filename, because the "
+            "source supplied neither a frontmatter 'title:' nor a single "
+            "leading H1. It reads as a slug rather than a title, and it goes "
+            "to the title field on the primary selection.",
+        )
+    ]
+
+
+def check(
+    html: str, base_dir: str | Path, *, title_from_slug: bool = False
+) -> list[Warning_]:
+    """Run every preflight check against rendered output.
+
+    `title_from_slug` is keyword-only and defaulted so the two-positional-arg
+    call shape keeps working.
+    """
     soup = BeautifulSoup(html, "html.parser")
     base = Path(base_dir)
 
@@ -192,6 +242,7 @@ def check(html: str, base_dir: str | Path) -> list[Warning_]:
         *_check_duplicate_title(soup),
         *_check_images(soup, base),
         *_check_footnotes(soup),
+        *_check_slug_title(soup, title_from_slug),
     ]
 
 
