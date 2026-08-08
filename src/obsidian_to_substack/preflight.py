@@ -8,6 +8,7 @@ found once should never again be discovered by pasting and squinting.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +22,11 @@ MAX_IMAGE_MB = 10.0
 # Wider than Substack's body column; the browser scales these down and the
 # content inside them shrinks with it.
 MAX_IMAGE_WIDTH = 2912
+
+# A footnote-shaped literal, e.g. "[^1]" — the marker that survives when a
+# hyphen-form definition never matched python-markdown's footnotes extension
+# (F1) and the reference degraded to plain text.
+FOOTNOTE_MARKER_PATTERN = re.compile(r"\[\^[^\]]+\]")
 
 
 @dataclass(frozen=True)
@@ -124,6 +130,58 @@ def _check_images(soup: BeautifulSoup, base_dir: Path) -> list[Warning_]:
     return warnings
 
 
+def _check_footnotes(soup: BeautifulSoup) -> list[Warning_]:
+    """Warn on both footnote failure modes found in the v1.0 audit.
+
+    F1: a literal `[^1]` marker surviving into the rendered text — the
+    hyphen-form definition never matched python-markdown's footnotes
+    extension, so the reference degraded to plain text instead of erroring.
+    F2: reference markup (`sup[id^="fnref:"]`) surviving with no footnotes
+    section (`li[id^="fn:"]`) beneath it — the section was deleted
+    downstream by strip_unsupported_elements' generic div handling before
+    that path preserved div.footnote. Two distinct checks because they have
+    different causes and different fixes.
+
+    Searches the soup's text content, not the raw HTML string — the raw
+    string carries `id`/`href` attribute values (e.g. `id="fnref:1"`) that
+    legitimately contain footnote-shaped substrings, and matching those
+    would warn on correct output.
+    """
+    warnings = []
+
+    for text_node in soup.find_all(string=FOOTNOTE_MARKER_PATTERN):
+        if isinstance(text_node, Comment):
+            continue
+        if text_node.find_parent(["code", "pre"]):
+            # Documentation of the syntax, not a failure.
+            continue
+        for match in FOOTNOTE_MARKER_PATTERN.finditer(str(text_node)):
+            warnings.append(
+                Warning_(
+                    "footnote_marker_literal",
+                    "GRD-02",
+                    f"A literal footnote marker {match.group()!r} survived "
+                    "into the rendered text; it will paste as visible "
+                    "garbage instead of a footnote.",
+                )
+            )
+
+    has_footnote_ref = bool(soup.select('sup[id^="fnref:"]'))
+    has_footnote_section = bool(soup.select('li[id^="fn:"]'))
+    if has_footnote_ref and not has_footnote_section:
+        warnings.append(
+            Warning_(
+                "footnote_section_missing",
+                "GRD-02",
+                "Footnote reference markup is present but no footnotes "
+                "section survived; the marker will paste with nothing for "
+                "the reader to correlate it with.",
+            )
+        )
+
+    return warnings
+
+
 def check(html: str, base_dir: str | Path) -> list[Warning_]:
     """Run every preflight check against rendered output."""
     soup = BeautifulSoup(html, "html.parser")
@@ -133,6 +191,7 @@ def check(html: str, base_dir: str | Path) -> list[Warning_]:
         *_check_placeholder_comments(soup),
         *_check_duplicate_title(soup),
         *_check_images(soup, base),
+        *_check_footnotes(soup),
     ]
 
 
