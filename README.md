@@ -109,7 +109,7 @@ manage, and an external publish on every run. Full evidence is in
 ## Development
 
 ```bash
-uv run pytest                                    # 201 tests, 88% coverage
+uv run pytest                                    # 201 tests, 93% coverage
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
