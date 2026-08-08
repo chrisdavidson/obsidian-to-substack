@@ -12,6 +12,7 @@ from obsidian_to_substack.image_assets import (
     copy_raster_embeds,
     find_image,
     referenced_images,
+    rewrite_image_refs,
 )
 
 
@@ -106,3 +107,70 @@ class TestCopyRasterEmbeds:
         _make_png(tmp_path / "d.png")
         copied = copy_raster_embeds("![[d.png]]", [tmp_path], str(tmp_path))
         assert copied["d.png"] == str(tmp_path / "d.png")
+
+
+class TestMarkdownImages:
+    """The vault uses `![alt](path)` as well as Obsidian embeds."""
+
+    def test_markdown_image_is_collected(self):
+        assert referenced_images("![Alt text](diagram.png)") == ["diagram.png"]
+
+    def test_long_alt_text_does_not_break_matching(self):
+        text = "![A very long caption, with commas and: colons](saas-two-boxes.png)"
+        assert referenced_images(text) == ["saas-two-boxes.png"]
+
+    def test_remote_markdown_image_is_ignored(self):
+        assert referenced_images("![x](https://cdn.example/x.png)") == []
+
+    def test_both_syntaxes_collected_together(self):
+        text = "![[a.png]] and ![alt](b.png)"
+        assert set(referenced_images(text)) == {"a.png", "b.png"}
+
+
+class TestPercentEncodedPaths:
+    def test_percent_encoded_space_resolves(self, tmp_path):
+        """Sources contain `saas-two-boxes%201.png` for `saas-two-boxes 1.png`."""
+        _make_png(tmp_path / "saas-two-boxes 1.png")
+        assert find_image("saas-two-boxes%201.png", [tmp_path]) is not None
+
+    def test_encoded_name_copies_to_the_decoded_filename(self, tmp_path):
+        source = tmp_path / "src"
+        out = tmp_path / "out"
+        _make_png(source / "two boxes.png")
+
+        copy_raster_embeds("![x](two%20boxes.png)", [source], str(out))
+        assert (out / "two boxes.png").is_file()
+
+
+class TestStalePathPrefixes:
+    def test_stale_directory_prefix_falls_back_to_basename(self, tmp_path):
+        """Archived articles keep paths from where they were drafted.
+
+        `![](2_Areas/articles/drafts/svg/x.png)` no longer resolves, but the
+        file sits in the article's own directory.
+        """
+        source = tmp_path / "article"
+        _make_png(source / "activity.png")
+
+        found = find_image("2_Areas/articles/drafts/svg/activity.png", [source])
+        assert found == source / "activity.png"
+
+
+class TestRewriteImageRefs:
+    def test_stale_path_is_rewritten_to_the_basename(self):
+        copied = {"2_Areas/drafts/x.png": "/out/x.png"}
+        text = "![Alt](2_Areas/drafts/x.png)"
+        assert rewrite_image_refs(text, copied) == "![Alt](x.png)"
+
+    def test_encoded_path_is_rewritten_to_the_decoded_basename(self):
+        copied = {"two%20boxes.png": "/out/two boxes.png"}
+        assert rewrite_image_refs("![a](two%20boxes.png)", copied) == "![a](two boxes.png)"
+
+    def test_uncopied_paths_are_left_alone(self):
+        text = "![a](https://cdn/x.png)"
+        assert rewrite_image_refs(text, {}) == text
+
+    def test_alt_text_is_preserved(self):
+        copied = {"d/x.png": "/out/x.png"}
+        result = rewrite_image_refs("![Important caption](d/x.png)", copied)
+        assert "Important caption" in result

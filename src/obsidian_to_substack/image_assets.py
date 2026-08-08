@@ -13,8 +13,10 @@ diagram by hand before embedding it (DIAG-02).
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 from pathlib import Path
+from urllib.parse import unquote
 
 from .obsidian_syntax import IMAGE_EMBED_PATTERN
 
@@ -22,32 +24,72 @@ logger = logging.getLogger(__name__)
 
 RASTER_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
+# Standard Markdown images: ![alt](path). Alt text can be long and contain
+# brackets-free prose, and the path may be percent-encoded.
+MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+
 
 def referenced_images(text: str) -> list[str]:
-    """Return every raster filename the text embeds, in order, deduplicated."""
+    """Return every raster image the text references, in order, deduplicated.
+
+    Covers both Obsidian embeds (`![[a.png]]`) and Markdown images
+    (`![alt](a.png)`), since the vault uses both.
+    """
     seen: list[str] = []
-    for match in IMAGE_EMBED_PATTERN.finditer(text):
-        filename = match.group(1).strip()
-        if Path(filename).suffix.lower() in RASTER_SUFFIXES and filename not in seen:
-            seen.append(filename)
+
+    for pattern in (IMAGE_EMBED_PATTERN, MARKDOWN_IMAGE_PATTERN):
+        for match in pattern.finditer(text):
+            filename = match.group(1).strip()
+            if filename.startswith(("http://", "https://", "data:")):
+                continue
+            if Path(unquote(filename)).suffix.lower() not in RASTER_SUFFIXES:
+                continue
+            if filename not in seen:
+                seen.append(filename)
+
     return seen
 
 
 def find_image(filename: str, search_dirs: list[Path]) -> Path | None:
-    """Locate an embedded image across the article's search directories."""
+    """Locate a referenced image across the article's search directories.
+
+    Paths are percent-decoded first (`saas-two-boxes%201.png`), then tried as
+    written, then by basename. The basename fallback matters because Obsidian
+    resolves embeds vault-wide, and because archived articles keep stale path
+    prefixes from wherever they were drafted.
+    """
+    decoded = unquote(filename)
+
     for directory in search_dirs:
-        candidate = Path(directory) / filename
+        candidate = Path(directory) / decoded
         if candidate.is_file():
             return candidate
 
-    # Obsidian resolves embeds vault-wide by basename, so fall back to a
-    # shallow search rather than failing on a subdirectory mismatch.
-    basename = Path(filename).name
+    basename = Path(decoded).name
     for directory in search_dirs:
-        for candidate in Path(directory).glob(f"**/{basename}"):
-            if candidate.is_file():
-                return candidate
+        candidate = Path(directory) / basename
+        if candidate.is_file():
+            return candidate
+        for found in Path(directory).glob(f"**/{basename}"):
+            if found.is_file():
+                return found
     return None
+
+
+def rewrite_image_refs(text: str, copied: dict[str, str]) -> str:
+    """Point Markdown image paths at the copied file's basename.
+
+    Obsidian embeds are basenamed by `replace_image_embeds`, but Markdown
+    images pass through the renderer untouched, so a stale or encoded path
+    would survive into the output.
+    """
+    def _replace(match: re.Match) -> str:
+        path = match.group(1).strip()
+        if path not in copied:
+            return match.group(0)
+        return match.group(0).replace(path, Path(copied[path]).name)
+
+    return MARKDOWN_IMAGE_PATTERN.sub(_replace, text)
 
 
 def copy_raster_embeds(
@@ -67,7 +109,7 @@ def copy_raster_embeds(
             logger.warning("Embedded image not found: %s", filename)
             continue
 
-        destination = out / Path(filename).name
+        destination = out / Path(unquote(filename)).name
         out.mkdir(parents=True, exist_ok=True)
         if source.resolve() != destination.resolve():
             shutil.copy2(source, destination)

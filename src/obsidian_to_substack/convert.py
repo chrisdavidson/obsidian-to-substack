@@ -14,7 +14,8 @@ import webbrowser
 from pathlib import Path
 
 from obsidian_to_substack.frontmatter import parse_frontmatter
-from obsidian_to_substack.image_assets import copy_raster_embeds
+from obsidian_to_substack.image_assets import copy_raster_embeds, rewrite_image_refs
+from obsidian_to_substack import preflight
 from obsidian_to_substack.obsidian_syntax import transform_obsidian_syntax
 from obsidian_to_substack.svg_export import export_all_svgs, validate_png
 from obsidian_to_substack.table_handler import (
@@ -100,7 +101,9 @@ def convert_article(
     # export_all_svgs, so copy them in — otherwise the <img src> points at a
     # file that is not next to article.html and pastes broken (DIAG-02).
     search_dirs = [source.parent, Path(svg_dir)] if svg_dir else [source.parent]
-    image_map.update(copy_raster_embeds(body, search_dirs, str(article_output)))
+    copied = copy_raster_embeds(body, search_dirs, str(article_output))
+    image_map.update(copied)
+    body = rewrite_image_refs(body, copied)
 
     tables = extract_tables(body)
     if datawrapper_token and tables:
@@ -129,6 +132,8 @@ def convert_article(
     meta_path = article_output / "metadata.json"
     meta_path.write_text(json.dumps(metadata, indent=2, default=str), encoding="utf-8")
 
+    warnings = preflight.check(html_doc, article_output)
+
     result = {
         "slug": slug,
         "html_path": str(html_path),
@@ -136,6 +141,7 @@ def convert_article(
         "png_files": list(image_map.values()),
         "table_count": len(tables),
         "output_dir": str(article_output),
+        "warnings": warnings,
     }
 
     logger.info("Converted: %s → %s", source.name, article_output)
@@ -283,6 +289,8 @@ def main() -> None:
             print(f"  [DRY RUN] {result['slug']}: {result['table_count']} tables, {result['svg_count']} SVGs")
         else:
             print(f"  {result['slug']}/")
+            if result.get("warnings"):
+                print(preflight.report(result["warnings"]))
             print(f"    HTML:   {result['html_path']}")
             print(f"    PNGs:   {len(result['png_files'])} images")
             print(f"    Tables: {result['table_count']} CSV exports")
