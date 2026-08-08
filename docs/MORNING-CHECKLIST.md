@@ -130,17 +130,19 @@ Committed, tested, and verified as far as it can be without you:
 |---|---|---|
 | 1 | EVID-01…05 | **Done.** `tools/substack_diff` + `docs/FINDINGS.md`, all 17 articles |
 | 2 | TBL-02, TBL-03, TBL-04 | **Built.** Tables render to PNG with alignment and inline styles |
-| 2 | TBL-01 | **Built, needs step 2.** Placeholder no longer emitted |
+| 2 | TBL-01 | **Confirmed 2026-08-08** by step 2 item 1 — real table image, no placeholder |
 | 2 | GRD-01 | **Done.** Regression tests for every fix |
 | 3 | DIAG-02 | **Done.** `.svg` and `.png` embeds both resolve |
-| 4 | FMT-02 | **Built, needs step 1.** Duplicate title heading dropped |
+| 4 | FMT-02 | **Confirmed 2026-08-08.** Duplicate H1 dropped; the title is now printed by the CLI to copy into Substack's title field |
 | 5 | GRD-02 | **Done.** Preflight warnings; all 17 articles convert clean |
-| 5 | GRD-03 | **Done.** 192 tests, up from 89 |
-| 5 | ACPT-01 | **Fixture built, needs step 1** |
+| 5 | GRD-03 | **Done.** 201 tests, up from 89 |
+| 5 | ACPT-01 | **Confirmed 2026-08-08** by step 1 — torture fixture pasted clean |
+| — | TBL-05 | **Closed 2026-08-08 by retirement.** See section 3 |
 
-Still fully open, because they are yours: **DIAG-01**
-(step 1, items 13–14), **FMT-01** (step 1, items 1–6, 12, 15), **DIAG-03** and
-**FMT-02**'s verification, **ACPT-02** (step 2), **ACPT-03** (step 4).
+Your 2026-08-08 pass marked every line except item 13, which answers **FMT-01**
+(step 1 items 1–6, 12, 15), **ACPT-02** (step 2) and most of **DIAG-01**
+(item 14). Still open: **DIAG-01**'s item 13 — is the SVG diagram centred? —
+plus **DIAG-03** and **ACPT-03** (step 4, still blank).
 
 ### Defects found and fixed
 

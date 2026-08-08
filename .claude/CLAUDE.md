@@ -37,7 +37,7 @@ recorded, and that varies article to article.
   headed to GitHub and planning is local workflow state. GSD commit steps on planning
   files are expected no-ops.
 
-- **Testing**: 89 tests currently pass; new defects get pinned by tests, per the author's
+- **Testing**: 201 tests currently pass; new defects get pinned by tests, per the author's
   "fixes + automated guards" decision
 <!-- GSD:project-end -->
 
