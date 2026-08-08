@@ -7,8 +7,10 @@ a question only a human can answer.
 Budget: about 20 minutes. Work top to bottom; each item names the requirement
 it closes and exactly what to look at.
 
-**Before you start:** the outputs are already generated in `output/`. You do not
-need to re-run the converter unless you want to.
+**Before you start:** `output/` still holds the pre-2026-08-08 run, whose `<title>`
+is the slug rather than the article's real title. Re-run the commands below —
+`--copy` regenerates anyway, and the run is what prints the `Title:` line you
+paste into Substack's title field.
 
 ---
 
@@ -29,7 +31,7 @@ more than a clean run.
 
 | # | What to look at | Expect | Result |
 |---|---|---|---|
-| 1 | Very top of the body | The title "Torture Test: Every Construct" appears **once** (Substack's own title), not twice |This is not populating, i did a copy and paste and the title element on substack did not populate, everything else did |
+| 1 | Very top of the body | No title heading in the body — copy the `Title:` line the CLI prints ("Torture Test: Every Construct") into Substack's own title field, then paste the body below it |This is not populating, i did a copy and paste and the title element on substack did not populate, everything else did — RESOLVED 2026-08-08: a body paste can never fill Substack's title field; the CLI now prints the title on its own line to copy across |
 | 2 | "Emphasis and inline marks" | bold, *italic*, ***bold italic***, `inline code`, and the link all render |X |
 | 3 | Same section | The em dash renders as one long dash, not `--` |X |
 | 4 | Headings | H2/H3/H4 are visibly different sizes and the hierarchy is intact |X |
