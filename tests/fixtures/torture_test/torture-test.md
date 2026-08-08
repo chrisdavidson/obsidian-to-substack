@@ -85,4 +85,9 @@ It should render as italic text, not a broken link.
 
 ## Closing
 
-If every construct above survived the paste with no manual repair, ACPT-01 passes.
+If every construct above survived the paste with no manual repair, ACPT-01
+passes, including this footnote reference[^1] written in the vault's own
+hyphen form.
+
+[^1] - Guidelines for the Construction, Format, and Management of Controlled
+Vocabularies, per ANSI/NISO Z39.19-2005 (R2010) standard.

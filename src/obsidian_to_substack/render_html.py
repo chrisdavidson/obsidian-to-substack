@@ -165,8 +165,30 @@ def extract_leading_title(markdown_text: str) -> str:
 
 
 def strip_unsupported_elements(html: str) -> str:
-    """Remove HTML elements that Substack cannot render."""
+    """Remove HTML elements that Substack cannot render.
+
+    `div` is in UNSUPPORTED_TAGS, and the generic loop below unwraps a div
+    only when it has `.string` (a single text-ish child) — a multi-child div
+    takes the decompose branch and its whole subtree is deleted. python-
+    markdown's footnotes extension emits `<div class="footnote"><hr /><ol>
+    ...</ol></div>`, which has two children and no `.string`, so without this
+    exception the entire footnotes section — marker AND text — is silently
+    destroyed (F2). That is strictly worse than the unconverted `[^1]`
+    literal it replaces: at least the literal shows the author *something*.
+    The footnotes section is the one subtree this pipeline is required to
+    keep, so it is unwrapped (not decomposed) before the generic loop runs,
+    and the generic loop needs no other special-casing.
+    """
     soup = BeautifulSoup(html, "html.parser")
+
+    for backref in soup.find_all("a", class_="footnote-backref"):
+        # Removed outright, not unwrapped: the generic anchor-unwrap loop
+        # below would otherwise strip its "#fnref:N" href and leave its "↩"
+        # glyph stranded as stray text in the footnote body (F6).
+        backref.decompose()
+
+    for footnote_div in soup.find_all("div", class_="footnote"):
+        footnote_div.unwrap()
 
     for tag_name in UNSUPPORTED_TAGS:
         for tag in soup.find_all(tag_name):
