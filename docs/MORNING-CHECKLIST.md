@@ -43,7 +43,7 @@ more than a clean run.
 | 10 | Second table image | Renders, 2 columns, readable at normal zoom |X |
 | 11 | Both table images | Text is **sharp**, not blurry or shrunken |X |
 | 12 | Blockquote | Renders as a quote, not plain text |X |
-| 13 | SVG diagram | The Obsidian→Substack diagram appears and is **centred** | |
+| 13 | SVG diagram | The Obsidian→Substack diagram appears and is **centred** |✅ 2026-08-08 — appears, and is centred. Not answerable from this fixture (the diagram is wider than the column, so it fills it either way); settled by a narrow-image probe in which **all three** embed styles came out centred. Substack centres images itself — alignment is not controllable from this tool. See `docs/FINDINGS-MANUAL.md` |
 | 14 | Markdown image | The second copy of the diagram appears (tests `![alt](path)` syntax) |X |
 | 15 | Wikilink | "Some Other Note" is *italic text*, not a broken link |X |
 
@@ -139,10 +139,27 @@ Committed, tested, and verified as far as it can be without you:
 | 5 | ACPT-01 | **Confirmed 2026-08-08** by step 1 — torture fixture pasted clean |
 | — | TBL-05 | **Closed 2026-08-08 by retirement.** See section 3 |
 
-Your 2026-08-08 pass marked every line except item 13, which answers **FMT-01**
-(step 1 items 1–6, 12, 15), **ACPT-02** (step 2) and most of **DIAG-01**
-(item 14). Still open: **DIAG-01**'s item 13 — is the SVG diagram centred? —
-plus **DIAG-03** and **ACPT-03** (step 4, still blank).
+Your 2026-08-08 pass marked every line, item 13 included. **DIAG-01** and
+**FMT-01** are answered and recorded — both asked only that the behaviour be
+observed and written down, and both now are, in `docs/FINDINGS-MANUAL.md`.
+**TBL-01**, **TBL-05** and **FMT-02** are confirmed by the same pass.
+
+Four are left, and all four are yours to judge rather than mine to tick:
+
+- **ACPT-01** and **ACPT-02** turn on your own bar: "pastes into a Substack
+  draft with **no manual repair**." Nothing needed repairing, but the title
+  still has to be copied into Substack's title field by hand. That is a
+  platform step rather than a repair of the output — your call whether it
+  clears the bar.
+- **DIAG-03** ("any confirmed diagram defect is fixed and verified against a
+  real paste") and **ACPT-03** ("any repair still required is recorded as a
+  known limitation") both look vacuously satisfied — no diagram defect was
+  observed and section 4 above is empty. Closing a requirement because nothing
+  went wrong is a call for you to make.
+- **TBL-04** is unblocked but unspent: you said the generated table is good
+  enough, so the `![[classification-table 1.png]]` line can come out of the
+  source and stop being maintained twice. That edit is in your vault, not this
+  repo.
 
 ### Defects found and fixed
 
