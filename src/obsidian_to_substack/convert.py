@@ -25,6 +25,7 @@ from obsidian_to_substack.table_handler import (
     replace_tables_with_placeholders,
 )
 from obsidian_to_substack.render_html import (
+    extract_leading_title,
     render_to_html,
     strip_duplicate_title,
     strip_unsupported_elements,
@@ -83,6 +84,20 @@ def convert_article(
 
     metadata, body = parse_frontmatter(raw_text)
 
+    # Resolution order: the stripped leading H1, then a frontmatter title,
+    # then the filename slug. The H1 outranks a frontmatter title because
+    # Obsidian sources in this corpus carry no frontmatter title and the H1
+    # is the live, author-maintained heading; the frontmatter key stays as
+    # the deliberate override for a source that does set one. This single
+    # resolved value feeds the Datawrapper chart title, wrap_html, the
+    # written metadata.json, and the CLI's Title line, so none of them can
+    # drift apart.
+    resolved_title = (
+        extract_leading_title(body)
+        or metadata.get("title", "")
+        or source.stem.replace("-", " ")
+    )
+
     image_map: dict[str, str] = {}
     if svg_dir is None:
         svg_dir = str(source.parent / "svg")
@@ -107,11 +122,10 @@ def convert_article(
 
     tables = extract_tables(body)
     if datawrapper_token and tables:
-        article_title = metadata.get("title", source.stem.replace("-", " "))
         body = replace_tables_with_embeds(
             body, tables, str(article_output),
             api_token=datawrapper_token,
-            article_title=article_title,
+            article_title=resolved_title,
         )
     else:
         body = replace_tables_with_images(
@@ -121,21 +135,28 @@ def convert_article(
     body = transform_obsidian_syntax(body, image_map=image_map)
 
     html_body = render_to_html(body)
-    title = metadata.get("title", source.stem.replace("-", " "))
-    html_body = strip_duplicate_title(html_body, title)
-    html_doc = wrap_html(html_body, title=title)
+    html_body, _ = strip_duplicate_title(html_body, resolved_title)
+    html_doc = wrap_html(html_body, title=resolved_title)
     html_doc = strip_unsupported_elements(html_doc)
 
     html_path = article_output / "article.html"
     html_path.write_text(html_doc, encoding="utf-8")
 
+    # New dict — never mutate the parsed metadata in place. This overwrites a
+    # frontmatter title in the emitted metadata.json; no corpus article has
+    # one, so this is theoretical, and the emitted file should describe the
+    # article as converted.
+    written_metadata = {**metadata, "title": resolved_title}
     meta_path = article_output / "metadata.json"
-    meta_path.write_text(json.dumps(metadata, indent=2, default=str), encoding="utf-8")
+    meta_path.write_text(
+        json.dumps(written_metadata, indent=2, default=str), encoding="utf-8"
+    )
 
     warnings = preflight.check(html_doc, article_output)
 
     result = {
         "slug": slug,
+        "title": resolved_title,
         "html_path": str(html_path),
         "metadata_path": str(meta_path),
         "png_files": list(image_map.values()),
@@ -178,6 +199,30 @@ def convert_directory(
             results.append({"file": str(md_file), "error": str(exc)})
 
     return results
+
+
+def format_result_lines(result: dict) -> list[str]:
+    """Format the per-article success output as a list of printable lines.
+
+    Extracted from main()'s success branch so the line order can be pinned
+    by a test without spawning a subprocess. Order: slug, Title (directly
+    below the slug and ahead of any preflight warnings — a noisy preflight
+    run would otherwise bury the one line the author is here to copy),
+    preflight report (appended only when non-empty; it embeds its own
+    newlines), HTML, PNGs, Tables. Labels are padded to a shared column so
+    all four values line up.
+    """
+    lines = [f"  {result['slug']}/"]
+    lines.append(f"    {'Title:':<8}{result.get('title', '')}")
+
+    report_text = preflight.report(result.get("warnings", []))
+    if report_text:
+        lines.append(report_text)
+
+    lines.append(f"    {'HTML:':<8}{result['html_path']}")
+    lines.append(f"    {'PNGs:':<8}{len(result['png_files'])} images")
+    lines.append(f"    {'Tables:':<8}{result['table_count']} CSV exports")
+    return lines
 
 
 def main() -> None:
@@ -288,12 +333,8 @@ def main() -> None:
         elif result.get("dry_run"):
             print(f"  [DRY RUN] {result['slug']}: {result['table_count']} tables, {result['svg_count']} SVGs")
         else:
-            print(f"  {result['slug']}/")
-            if result.get("warnings"):
-                print(preflight.report(result["warnings"]))
-            print(f"    HTML:   {result['html_path']}")
-            print(f"    PNGs:   {len(result['png_files'])} images")
-            print(f"    Tables: {result['table_count']} CSV exports")
+            for line in format_result_lines(result):
+                print(line)
 
     if args.open_browser and not args.dry_run:
         for result in results:

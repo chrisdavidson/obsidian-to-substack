@@ -111,7 +111,7 @@ def _normalize_title(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
-def strip_duplicate_title(body_html: str, title: str = "") -> str:
+def strip_duplicate_title(body_html: str, title: str = "") -> tuple[str, str]:
     """Drop a leading H1 that acts as the article's title.
 
     Obsidian sources often open with `# The Article Title`. Substack renders
@@ -125,11 +125,18 @@ def strip_duplicate_title(body_html: str, title: str = "") -> str:
     corpus correctly; matching against `title` alone does not, because Obsidian
     sources carry no frontmatter title and authors reword titles when
     publishing.
+
+    Returns a `(body, dropped_heading_text)` tuple. The second element is the
+    text of the heading that was dropped — it is the article's title. Every
+    early-return path (no headings, non-H1 leading heading, or a leading H1
+    that fails both the sole-H1 and title-match tests) returns the body
+    untouched paired with an empty string, not None — callers chain it with
+    `or`.
     """
     soup = BeautifulSoup(body_html, "html.parser")
     headings = soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
     if not headings or headings[0].name != "h1":
-        return body_html
+        return body_html, ""
 
     first = headings[0]
     sole_h1 = len([h for h in headings if h.name == "h1"]) == 1
@@ -138,11 +145,23 @@ def strip_duplicate_title(body_html: str, title: str = "") -> str:
     ) == _normalize_title(title)
 
     if not (sole_h1 or matches_title):
-        return body_html
+        return body_html, ""
 
-    logger.info("Dropped duplicate title heading: %s", first.get_text(strip=True))
+    dropped_text = first.get_text(" ", strip=True)
+    logger.info("Dropped duplicate title heading: %s", dropped_text)
     first.decompose()
-    return str(soup)
+    return str(soup), dropped_text
+
+
+def extract_leading_title(markdown_text: str) -> str:
+    """Return the text of a leading sole-H1 heading in Markdown, or "".
+
+    Delegates to `strip_duplicate_title` rather than regexing for a leading
+    `# ` line: that inherits the single sole-H1 rule, and it will not
+    miscount a hash-prefixed line that happens to sit inside a fenced code
+    block (the article corpus's torture-test fixture contains fenced code).
+    """
+    return strip_duplicate_title(render_to_html(markdown_text))[1]
 
 
 def strip_unsupported_elements(html: str) -> str:
