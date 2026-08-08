@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Convert Obsidian Markdown articles to Substack-compatible HTML output"
 readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "cairosvg>=2.7",
     "Pillow>=11.0",
