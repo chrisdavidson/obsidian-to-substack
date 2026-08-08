@@ -139,9 +139,22 @@ def run_diff(
 
     generated = _datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     output.parent.mkdir(parents=True, exist_ok=True)
+
+    # docs/FINDINGS-MANUAL.md sits next to the --out path by convention.
+    # render() itself stays pure (no filesystem access) — this is the one
+    # place that resolves and reads it.
+    manual_path = output.parent / "FINDINGS-MANUAL.md"
+    hand_recorded = manual_path.read_text(encoding="utf-8") if manual_path.is_file() else ""
+
     output.write_text(
         report.render(
-            findings, compared, skipped, generated, patterns_by_article, regenerated
+            findings,
+            compared,
+            skipped,
+            generated,
+            patterns_by_article,
+            regenerated,
+            hand_recorded=hand_recorded,
         ),
         encoding="utf-8",
     )

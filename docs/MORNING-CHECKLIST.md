@@ -29,21 +29,21 @@ more than a clean run.
 
 | # | What to look at | Expect | Result |
 |---|---|---|---|
-| 1 | Very top of the body | The title "Torture Test: Every Construct" appears **once** (Substack's own title), not twice | |
-| 2 | "Emphasis and inline marks" | bold, *italic*, ***bold italic***, `inline code`, and the link all render | |
-| 3 | Same section | The em dash renders as one long dash, not `--` | |
-| 4 | Headings | H2/H3/H4 are visibly different sizes and the hierarchy is intact | |
-| 5 | Unordered list | Bullets render, and the two nested items are visibly indented | |
-| 6 | Ordered list | Numbered 1/2/3, not bulleted | |
-| 7 | First table image | Renders as an image; left/centre/right columns are visibly aligned differently | |
-| 8 | First table image | The long cell **wrapped** inside its column instead of running off the page | |
-| 9 | First table image | "Bold cell" is bold, "italic" is italic, and `code` shows **without** backticks | |
-| 10 | Second table image | Renders, 2 columns, readable at normal zoom | |
-| 11 | Both table images | Text is **sharp**, not blurry or shrunken | |
-| 12 | Blockquote | Renders as a quote, not plain text | |
+| 1 | Very top of the body | The title "Torture Test: Every Construct" appears **once** (Substack's own title), not twice |This is not populating, i did a copy and paste and the title element on substack did not populate, everything else did |
+| 2 | "Emphasis and inline marks" | bold, *italic*, ***bold italic***, `inline code`, and the link all render |X |
+| 3 | Same section | The em dash renders as one long dash, not `--` |X |
+| 4 | Headings | H2/H3/H4 are visibly different sizes and the hierarchy is intact |X |
+| 5 | Unordered list | Bullets render, and the two nested items are visibly indented |X |
+| 6 | Ordered list | Numbered 1/2/3, not bulleted |X |
+| 7 | First table image | Renders as an image; left/centre/right columns are visibly aligned differently |X |
+| 8 | First table image | The long cell **wrapped** inside its column instead of running off the page |X |
+| 9 | First table image | "Bold cell" is bold, "italic" is italic, and `code` shows **without** backticks |X |
+| 10 | Second table image | Renders, 2 columns, readable at normal zoom |X |
+| 11 | Both table images | Text is **sharp**, not blurry or shrunken |X |
+| 12 | Blockquote | Renders as a quote, not plain text |X |
 | 13 | SVG diagram | The Obsidian→Substack diagram appears and is **centred** | |
-| 14 | Markdown image | The second copy of the diagram appears (tests `![alt](path)` syntax) | |
-| 15 | Wikilink | "Some Other Note" is *italic text*, not a broken link | |
+| 14 | Markdown image | The second copy of the diagram appears (tests `![alt](path)` syntax) |X |
+| 15 | Wikilink | "Some Other Note" is *italic text*, not a broken link |X |
 
 **If items 1, 7–11, 13, or 14 pass**, the fixes I made overnight are confirmed
 working. If any fail, note what you saw — that is a finding, and it goes in
@@ -66,11 +66,11 @@ Paste into a **new draft** (do not overwrite the published post).
 
 | # | What to look at | Expect | Result |
 |---|---|---|---|
-| 1 | Where the table belongs | A real, readable table image appears — **no** blank gap, no stray comment | |
-| 2 | Immediately below it | Your old hand-drawn `classification-table` image also appears | |
-| 3 | Compare the two | The generated table should be at least as readable as your hand-drawn one | |
-| 4 | Top of body | Title appears once, not twice | |
-| 5 | All three diagrams | `three-statements`, `derivation-tree`, `classification-table` all render | |
+| 1 | Where the table belongs | A real, readable table image appears — **no** blank gap, no stray comment |X |
+| 2 | Immediately below it | Your old hand-drawn `classification-table` image also appears |X |
+| 3 | Compare the two | The generated table should be at least as readable as your hand-drawn one |X |
+| 4 | Top of body | Title appears once, not twice |X |
+| 5 | All three diagrams | `three-statements`, `derivation-tree`, `classification-table` all render |X |
 
 **The decision this unlocks (TBL-04):** if item 3 says the generated table is
 good enough, you can delete the `![[classification-table 1.png]]` line from the
@@ -89,13 +89,13 @@ assumption, and TBL-05 exists to settle it.
 ```bash
 export DATAWRAPPER_API_TOKEN=...   # your token
 uv run obsidian-to-substack ~/Obsidian/BrainBank/4_Archive/"Published Articles"/propositions-axiom-relationship \
-  --file propositions-axiom-relationship.md --output-dir ./output-dw --copy
+  --file propositions-axiom-relationship.md --output-dir ./output-dw --datawrapper --copy
 ```
 
 | # | What to look at | Expect | Result |
 |---|---|---|---|
-| 1 | Where the table belongs | Does *anything* appear? A chart, a link, or nothing at all? | |
-| 2 | If something appears | Is it interactive, a static image, or a bare URL? | |
+| 1 | Where the table belongs | Does *anything* appear? A chart, a link, or nothing at all? |X |
+| 2 | If something appears | Is it interactive, a static image, or a bare URL? |X |
 
 **Then decide:** if the embed survives and looks good, `--datawrapper` stays and
 gets documented. If it pastes as nothing, we retire the flag rather than leave a

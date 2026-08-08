@@ -145,8 +145,15 @@ def render(
     generated: str,
     patterns_by_article: dict[str, list] | None = None,
     regenerated: list[str] | None = None,
+    hand_recorded: str = "",
 ) -> str:
-    """Render the full FINDINGS.md document."""
+    """Render the full FINDINGS.md document.
+
+    render() stays pure — it takes hand_recorded as a plain string argument
+    and never reads the filesystem or resolves a __file__-relative path.
+    __main__.py is responsible for locating and reading
+    docs/FINDINGS-MANUAL.md and passing its contents in.
+    """
     patterns_by_article = patterns_by_article or {}
     regenerated = regenerated or []
     sections = [
@@ -248,5 +255,14 @@ def render(
         for article, reason in sorted(skipped.items()):
             sections.append(f"| {article} | {reason} |")
         sections.append("")
+
+    if hand_recorded:
+        # Same heading-plus-single-blank-line join __main__.py uses when it
+        # appends docs/FINDINGS-MANUAL.md's exact bytes to docs/FINDINGS.md
+        # by hand. Keeping both joins identical means the next regeneration
+        # reproduces today's tail byte-for-byte instead of drifting.
+        sections.append("## Hand-recorded findings")
+        sections.append("")
+        sections.append(hand_recorded)
 
     return "\n".join(sections)

@@ -1,5 +1,6 @@
 """Tests for the evidence-recovery diff tool (Phase 1)."""
 
+from tools.substack_diff import report
 from tools.substack_diff.diagnose import detect
 from tools.substack_diff.structure import extract
 
@@ -124,3 +125,28 @@ class TestDiagnose:
         )
         patterns = detect(extract(clean), extract(published, is_published=True), "Title")
         assert patterns == []
+
+
+class TestHandRecordedFindings:
+    """report.render splices hand-authored findings into the generated doc.
+
+    docs/FINDINGS.md is machine-generated (overwritten wholesale by
+    `python -m tools.substack_diff --all`), so a hand-written entry needs a
+    render() parameter rather than a direct edit to survive regeneration.
+    """
+
+    def test_hand_recorded_text_appears_in_the_rendered_document(self):
+        rendered = report.render(
+            [],
+            [],
+            {},
+            "2026-01-01 00:00",
+            hand_recorded="### A Hand-recorded Entry\n\nSome detail text.",
+        )
+        assert "## Hand-recorded findings" in rendered
+        assert "### A Hand-recorded Entry" in rendered
+        assert "Some detail text." in rendered
+
+    def test_section_is_omitted_when_hand_recorded_text_is_empty(self):
+        rendered = report.render([], [], {}, "2026-01-01 00:00", hand_recorded="")
+        assert "## Hand-recorded findings" not in rendered
