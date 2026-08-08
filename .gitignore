@@ -23,3 +23,6 @@ output/
 # Local planning and tooling — not part of the published project
 .planning/
 .claude/settings.local.json
+
+# Diff tool fetch cache
+.cache/

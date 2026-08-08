@@ -1,0 +1,123 @@
+{
+  "Taxonom_Supports_Strategic_Decisions": {
+    "confidence": 0.775,
+    "has_article_html": false,
+    "slug": "how-a-taxonomy-transforms-strategic",
+    "source_markdown": "How Taxonomy Supports Strategic Planning and Decision-Making.md",
+    "title": "How a Taxonomy Transforms Strategic Decision-Making"
+  },
+  "a-taxonomy-for-innovation-giving-new-ideas-a-structural-home": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "slug": "a-taxonomy-for-innovation-giving",
+    "source_markdown": "A Taxonomy for Innovation - Giving New Ideas a Structural Home.md",
+    "title": "A Taxonomy for Innovation - Giving New Ideas a Structural Home"
+  },
+  "axiom-load-bearing": {
+    "confidence": 0.889,
+    "has_article_html": false,
+    "slug": "the-axiom-why-it-is-load-bearing",
+    "source_markdown": "the-axiom-load-bearing-not-inspirational.md",
+    "title": "The Axiom: Why It Is Load-Bearing, Not Inspirational"
+  },
+  "essence-statement": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "note": "hand-verified; fuzzy score 0.42 was below cutoff",
+    "slug": "the-essence-statement-the-load-bearing",
+    "source_markdown": "essence-statement.md",
+    "title": "The Essence Statement: The Load-Bearing Identity of What You Build"
+  },
+  "measuring-success-how-to-track-progress-toward-done": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "slug": "measuring-success-how-to-track-progress",
+    "source_markdown": "Measuring Success - How to Track Progress Toward Done.md",
+    "title": "Measuring Success - How to Track Progress Toward Done"
+  },
+  "propositions-axiom-relationship": {
+    "confidence": 0.571,
+    "has_article_html": true,
+    "slug": "propositions-how-one-axiom-becomes",
+    "source_markdown": "propositions-axiom-relationship.md",
+    "title": "Propositions: How One Axiom Becomes a Framework"
+  },
+  "saas-cost-benefit-data-ownership": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "note": "hand-verified; fuzzy score 0.27 - title bears no resemblance to the slug",
+    "slug": "the-question-that-ends-the-saas-evaluation",
+    "source_markdown": "saas-cost-benefit-data-ownership.md",
+    "title": "The Question That Ends the SaaS Evaluation"
+  },
+  "strip-the-brand-names-an-introduction-to-first-principles-thinking-in-regulated-software": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "slug": "strip-the-brand-names-an-introduction",
+    "source_markdown": "Strip the Brand Names - An Introduction to First Principles Thinking in Regulated Software.md",
+    "title": "Strip the Brand Names: An Introduction to First Principles Thinking in Regulated Software"
+  },
+  "taxonomy-drift-the-silent-decay-of-shared-language": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "slug": "taxonomy-drift-the-silent-decay-of",
+    "source_markdown": "Taxonomy Drift - The Silent Decay of Shared Language.md",
+    "title": "Taxonomy Drift - The Silent Decay of Shared Language"
+  },
+  "taxonomy-the-language-breaks-first": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "slug": "taxonomy-the-language-breaks-first",
+    "source_markdown": "Taxonomy - The Language Breaks First.md",
+    "title": "Taxonomy - The Language Breaks First"
+  },
+  "the-agent-and-the-taxonomy-why-autonomous-systems-need-shared-language": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "slug": "the-agent-and-the-taxonomy-why-autonomous",
+    "source_markdown": "The Agent and the Taxonomy - Why Autonomous Systems Need Shared Language.md",
+    "title": "The Agent and the Taxonomy - Why Autonomous Systems Need Shared Language"
+  },
+  "the-knowledge-base-is-already-written": {
+    "confidence": 0.484,
+    "has_article_html": true,
+    "slug": "the-knowledge-base-is-already-written",
+    "source_markdown": "the-knowledge-base-is-already-written.md",
+    "title": "The Knowledge Base Is Already Written: Using Domain Articles to Prepare an AI Agent for the Pharmaceutical Laboratory"
+  },
+  "the-ladder-you-cannot-skip-a-taxonomy-maturity-model-for-organization-that-mean-it": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "slug": "the-ladder-you-cannot-skip-a-taxonomy",
+    "source_markdown": "The Ladder You Cannot Skip - A Taxonomy Maturity Model for Organization that Mean It.md",
+    "title": "The Ladder You Cannot Skip - A Taxonomy Maturity Model for Organization that Mean It"
+  },
+  "the-roi-of-shared-language-measuring-taxonomys-business-value": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "slug": "the-roi-of-shared-language-measuring",
+    "source_markdown": "The ROI of Shared Language - Measuring Taxonomies Business Value.md",
+    "title": "The ROI of Shared Language - Measuring Taxonomies Business Value"
+  },
+  "the-silent-override-when-systems-reshape-the-taxonomy-they-were-built-to-carry": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "slug": "the-silent-override-when-systems",
+    "source_markdown": "The Silent Override - When Systems Reshape the Taxonomy They Were Built to Carry.md",
+    "title": "The Silent Override - When Systems Reshape the Taxonomy They Were Built to Carry"
+  },
+  "training-an-ai-model-with-taxonomy-and-ontology": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "slug": "training-an-ai-model-with-taxonomy",
+    "source_markdown": "Training an AI Model with Taxonomy and Ontology.md",
+    "title": "Training an AI Model with Taxonomy and Ontology"
+  },
+  "when-taxonomies-fail-five-patterns-of-structural-collapse": {
+    "confidence": 1.0,
+    "has_article_html": true,
+    "slug": "when-taxonomies-fail-five-patterns",
+    "source_markdown": "When Taxonomies Fail - Five Patterns of Structural Collapse.md",
+    "title": "When Taxonomies Fail - Five Patterns of Structural Collapse"
+  }
+}
