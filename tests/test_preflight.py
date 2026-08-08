@@ -198,6 +198,16 @@ class TestSlugTitleCheck:
         warnings = check(html, tmp_path)
         assert not any(w.check == "slug_title" for w in warnings)
 
+    def test_title_survives_the_strip_stage_unmangled(self, tmp_path):
+        # check() runs on the post-strip document, so a title carrying
+        # characters that could round-trip as entities must still match the
+        # original -- otherwise the !r in the message shows a mangled title.
+        title = "a title with & and an apostrophe's mark"
+        doc = strip_unsupported_elements(wrap_html("", title))
+        slug = [w for w in check(doc, tmp_path, title_from_slug=True) if w.check == "slug_title"]
+        assert slug, "expected a slug_title warning"
+        assert repr(title) in slug[0].message
+
     def test_missing_title_element_does_not_crash(self, tmp_path):
         warnings = check("<body><p>x</p></body>", tmp_path, title_from_slug=True)
         assert not any(w.check == "slug_title" for w in warnings)
