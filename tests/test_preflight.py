@@ -7,7 +7,11 @@ found once should never again be rediscovered by pasting and squinting.
 from PIL import Image
 
 from obsidian_to_substack.preflight import MAX_IMAGE_WIDTH, check, report
-from obsidian_to_substack.render_html import render_to_html, strip_unsupported_elements
+from obsidian_to_substack.render_html import (
+    render_to_html,
+    strip_unsupported_elements,
+    wrap_html,
+)
 
 
 def _png(path, size=(10, 10)):
@@ -139,6 +143,64 @@ class TestFootnoteChecks:
         html = "<body><pre><code>[^1] - example syntax</code></pre></body>"
         warnings = [w for w in check(html, tmp_path) if w.check.startswith("footnote_")]
         assert warnings == []
+
+
+class TestSlugTitleCheck:
+    """The title fell back to the filename AND the filename is a slug (GRD-02).
+
+    The fallback alone is not a defect: 20 of the 25 published articles take
+    their title from the filename and read correctly, because their filenames
+    are written as titles. Only the lowercase-slug case is a defect, so every
+    no-warn case below is load-bearing.
+    """
+
+    def test_warns_on_lowercase_slug_title(self, tmp_path):
+        html = "<html><head><title>article with no title</title></head></html>"
+        warnings = check(html, tmp_path, title_from_slug=True)
+        assert any(w.check == "slug_title" for w in warnings)
+
+    def test_slug_title_warning_cites_grd_02(self, tmp_path):
+        html = "<html><head><title>several h1 headings</title></head></html>"
+        slug = [w for w in check(html, tmp_path, title_from_slug=True) if w.check == "slug_title"]
+        assert slug[0].requirement == "GRD-02"
+
+    def test_warning_names_the_resolved_title(self, tmp_path):
+        html = "<html><head><title>all lowercase filename</title></head></html>"
+        slug = [w for w in check(html, tmp_path, title_from_slug=True) if w.check == "slug_title"]
+        assert "all lowercase filename" in slug[0].message
+
+    def test_warning_does_not_prescribe_adding_an_h1(self, tmp_path):
+        # The fallback also fires when a leading H1 exists but is not the
+        # document's only one -- 19 of the 25 published articles. Telling the
+        # author to "add an H1" would be wrong for them.
+        html = "<html><head><title>no capitals here?</title></head></html>"
+        slug = [w for w in check(html, tmp_path, title_from_slug=True) if w.check == "slug_title"]
+        assert "add an h1" not in slug[0].message.lower()
+
+    def test_filename_that_reads_as_a_title_does_not_warn(self, tmp_path):
+        html = "<html><head><title>A Filename That Reads As A Title</title></head></html>"
+        warnings = check(html, tmp_path, title_from_slug=True)
+        assert not any(w.check == "slug_title" for w in warnings)
+
+    def test_single_capital_is_enough_to_stay_silent(self, tmp_path):
+        html = "<html><head><title>A Capitalised Filename</title></head></html>"
+        warnings = check(html, tmp_path, title_from_slug=True)
+        assert not any(w.check == "slug_title" for w in warnings)
+
+    def test_authored_title_never_warns_however_it_looks(self, tmp_path):
+        # Fallback did not fire: the author set this lowercase title deliberately.
+        html = "<html><head><title>article with no title</title></head></html>"
+        warnings = check(html, tmp_path, title_from_slug=False)
+        assert not any(w.check == "slug_title" for w in warnings)
+
+    def test_two_positional_args_still_work_and_never_warn(self, tmp_path):
+        html = "<html><head><title>article with no title</title></head></html>"
+        warnings = check(html, tmp_path)
+        assert not any(w.check == "slug_title" for w in warnings)
+
+    def test_missing_title_element_does_not_crash(self, tmp_path):
+        warnings = check("<body><p>x</p></body>", tmp_path, title_from_slug=True)
+        assert not any(w.check == "slug_title" for w in warnings)
 
 
 class TestReport:

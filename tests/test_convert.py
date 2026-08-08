@@ -107,6 +107,61 @@ class TestFootnoteEndToEnd:
         assert "[^1]" not in html
 
 
+class TestSlugTitleEndToEnd:
+    """convert_article must hand preflight the fact that the fallback fired.
+
+    Preflight sees only the rendered HTML, which cannot distinguish a title
+    taken from the filename from one the author set deliberately.
+    """
+
+    def _write(self, directory, name, body):
+        source = Path(directory) / name
+        source.write_text(body, encoding="utf-8")
+        return str(source)
+
+    def test_slug_filename_with_no_title_source_warns(self, tmp_path):
+        # No frontmatter title, and no H1 at all -- opens at H2.
+        article = self._write(
+            tmp_path, "article-with-no-title.md", "## Introduction\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"))
+        assert result["title"] == "article with no title"
+        assert any(w.check == "slug_title" for w in result["warnings"])
+
+    def test_several_h1s_also_reaches_the_fallback_and_warns(self, tmp_path):
+        # The other fallback path: a leading H1 that is not the sole H1.
+        # 19 of the 25 published articles look like this.
+        article = self._write(
+            tmp_path, "several-h1-headings.md", "# One\n\na\n\n# Two\n\nb\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"))
+        assert any(w.check == "slug_title" for w in result["warnings"])
+
+    def test_filename_that_reads_as_a_title_does_not_warn(self, tmp_path):
+        article = self._write(
+            tmp_path, "A Capitalised Filename.md", "## Introduction\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"))
+        assert not any(w.check == "slug_title" for w in result["warnings"])
+
+    def test_frontmatter_title_suppresses_the_warning(self, tmp_path):
+        article = self._write(
+            tmp_path,
+            "article-with-no-title.md",
+            '---\ntitle: "A Title Set In Frontmatter"\n---\n\n## Introduction\n\nBody.\n',
+        )
+        result = convert_article(article, str(tmp_path / "out"))
+        assert result["title"] == "A Title Set In Frontmatter"
+        assert not any(w.check == "slug_title" for w in result["warnings"])
+
+    def test_sole_h1_suppresses_the_warning(self, tmp_path):
+        article = self._write(
+            tmp_path, "article-with-no-title.md", "# A Real Title\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"))
+        assert not any(w.check == "slug_title" for w in result["warnings"])
+
+
 class TestConvertDirectory:
     def test_processes_md_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
