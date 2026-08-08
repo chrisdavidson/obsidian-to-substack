@@ -48,8 +48,10 @@ Each `.md` file becomes a folder under `./output/<slug>/` containing:
 
 After each run, a preflight check reports any construct known to break in
 Substack — a leaked table placeholder, a missing or oversized image, a heading
-that will paste as a duplicate title. Each warning cites the requirement it
-came from.
+that will paste as a duplicate title, a footnote marker that did not convert.
+Each warning cites the requirement it came from. Every check exists because
+that construct broke a real post once; see
+[docs/FINDINGS.md](docs/FINDINGS.md).
 
 A typical run — convert one article and put it on the clipboard:
 
@@ -104,11 +106,30 @@ spreadsheet or reuse elsewhere.
   output directory so the reference resolves. Markdown `![alt](path)` images
   work too, including percent-encoded and stale vault-relative paths.
 - **A leading `# Title`** — dropped when it is the document's only H1, since
-  Substack renders its own title above the body.
+  Substack renders its own title above the body. Its text becomes the resolved
+  title, printed by the CLI and placed on the primary selection.
+- **Footnotes** — `[^1]` references and their definitions survive the paste,
+  superscript marker and text both. Obsidian sources often write a definition
+  as `[^1] - text`, which Markdown does not recognise (it wants `[^1]: text`);
+  that form is normalized rather than left to degrade into literal `[^1]` in
+  your post.
 - **`[[Wikilinks]]`** — rendered as italic text, since the destination note
   doesn't exist outside your vault.
 - **` -- `** — converted to a proper em dash.
 - **Unsupported HTML** — stripped, so nothing silently breaks in the composer.
+
+## Known limitations
+
+Established by pasting into a real draft and watching what happens — Substack
+has no rendering API, so every claim here was checked by hand:
+
+- **The title is placed by hand.** Substack never fills its title field from
+  pasted body content. `--copy` reduces this to one middle-click, but it cannot
+  be removed.
+- **Image alignment is not controllable.** Substack centres every image itself,
+  whatever markup you send. There is no way to left- or right-align one.
+- **`--copy` is Linux/X11 only**, and the title hand-off additionally needs a
+  browser that honours middle-click paste of the primary selection.
 
 ## Non-goals
 
@@ -120,7 +141,7 @@ manage, and an external publish on every run. Full evidence is in
 ## Development
 
 ```bash
-uv run pytest                                    # 201 tests, 93% coverage
+uv run pytest                                    # 228 tests, 94% coverage
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
