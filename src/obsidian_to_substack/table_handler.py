@@ -1,4 +1,5 @@
-"""Extract Markdown pipe tables and export to CSV for Datawrapper."""
+"""Extract Markdown pipe tables, render them to PNG figures, and export a
+CSV data sidecar alongside each one."""
 
 import csv
 import io
@@ -123,33 +124,6 @@ def table_to_csv(parsed_rows: list[list[str]], output_path: str) -> str:
     return str(path)
 
 
-def replace_tables_with_placeholders(
-    text: str,
-    tables: list[tuple[int, int, str, list[list[str]]]],
-    output_dir: str,
-) -> str:
-    """Replace each table with a placeholder comment and export to CSV.
-
-    Tables are processed in reverse order to preserve line numbers.
-    Returns the modified text.
-    """
-    if not tables:
-        return text
-
-    out_dir = Path(output_dir)
-    lines = text.split("\n")
-
-    for idx, (start, end, _raw, parsed_rows) in enumerate(reversed(tables), 1):
-        table_num = len(tables) - idx + 1
-        csv_name = f"table-{table_num}.csv"
-        table_to_csv(parsed_rows, str(out_dir / csv_name))
-
-        placeholder = f"<!-- TABLE {table_num}: See {csv_name} for Datawrapper import -->"
-        lines[start:end + 1] = [placeholder]
-
-    return "\n".join(lines)
-
-
 def replace_tables_with_images(
     text: str,
     tables: list[tuple[int, int, str, list[list[str]]]],
@@ -158,10 +132,10 @@ def replace_tables_with_images(
 ) -> str:
     """Replace each table with a rendered PNG figure, and export the CSV too.
 
-    This is the default table path. Substack's composer will not accept a
+    This is the only table path. Substack's composer will not accept a
     pasted HTML table, so the table is rendered to an image the same way the
-    author used to do by hand. The CSV is still written alongside it, so the
-    Datawrapper route stays available without a re-run.
+    author used to do by hand. The CSV is still written alongside it as a
+    standalone data sidecar.
 
     Tables are processed in reverse order to preserve line numbers.
     """
@@ -209,60 +183,3 @@ def _rows_to_csv_string(parsed_rows: list[list[str]]) -> str:
     return buf.getvalue()
 
 
-def replace_tables_with_embeds(
-    text: str,
-    tables: list[tuple[int, int, str, list[list[str]]]],
-    output_dir: str,
-    api_token: str,
-    article_title: str = "",
-) -> str:
-    """Replace tables with Datawrapper chart images and export CSV backups.
-
-    Each table is published to Datawrapper, exported as a PNG, and replaced
-    with an <img> tag pointing to the local PNG. This ensures charts render
-    correctly both in browser preview and when pasted into Substack via --copy.
-
-    CSV files are still saved locally as backups. Falls back to placeholder
-    comments if the API call fails.
-    """
-    from obsidian_to_substack.datawrapper import export_chart_png, publish_table
-
-    if not tables:
-        return text
-
-    out_dir = Path(output_dir)
-    lines = text.split("\n")
-
-    for idx, (start, end, _raw, parsed_rows) in enumerate(reversed(tables), 1):
-        table_num = len(tables) - idx + 1
-        csv_name = f"table-{table_num}.csv"
-        table_to_csv(parsed_rows, str(out_dir / csv_name))
-
-        csv_data = _rows_to_csv_string(parsed_rows)
-        title = f"{article_title} — Table {table_num}" if article_title else f"Table {table_num}"
-
-        try:
-            embed_url, chart_id = publish_table(csv_data, title, api_token)
-            logger.info("Table %d published to Datawrapper: %s", table_num, embed_url)
-
-            png_name = f"table-{table_num}.png"
-            png_bytes = export_chart_png(chart_id, api_token)
-            png_path = out_dir / png_name
-            png_path.write_bytes(png_bytes)
-            logger.info("Table %d exported as PNG: %s", table_num, png_name)
-
-            alt_text = title.replace('"', "&quot;")
-            replacement = (
-                f'<!-- Datawrapper: {embed_url} -->\n'
-                f'<img src="{png_name}" alt="{alt_text}">'
-            )
-        except Exception as exc:
-            logger.warning(
-                "Datawrapper publish failed for table %d: %s. Using placeholder.",
-                table_num, exc,
-            )
-            replacement = f"<!-- TABLE {table_num}: See {csv_name} for Datawrapper import -->"
-
-        lines[start:end + 1] = [replacement]
-
-    return "\n".join(lines)

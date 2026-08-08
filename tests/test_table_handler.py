@@ -6,7 +6,6 @@ from pathlib import Path
 from obsidian_to_substack.table_handler import (
     _md_inline_to_html,
     extract_tables,
-    replace_tables_with_placeholders,
     table_to_csv,
 )
 
@@ -97,34 +96,3 @@ class TestTableToCsv:
             assert "Feature,Status" in content
             assert "Bold,Yes" in content
             assert "Tables,No" in content
-
-
-class TestReplaceTablesWithPlaceholders:
-    def test_replaces_table_with_comment(self):
-        text = (
-            "Before\n\n"
-            "| A | B |\n"
-            "| --- | --- |\n"
-            "| 1 | 2 |\n\n"
-            "After"
-        )
-        tables = extract_tables(text)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            result = replace_tables_with_placeholders(text, tables, tmpdir)
-            assert "<!-- TABLE 1:" in result
-            assert "table-1.csv" in result
-            assert "Before" in result
-            assert "After" in result
-            assert "| A |" not in result
-
-    def test_csv_file_created(self):
-        text = "| X | Y |\n| --- | --- |\n| a | b |\n"
-        tables = extract_tables(text)
-        with tempfile.TemporaryDirectory() as tmpdir:
-            replace_tables_with_placeholders(text, tables, tmpdir)
-            assert (Path(tmpdir) / "table-1.csv").exists()
-
-    def test_no_tables_returns_unchanged(self):
-        text = "No tables here."
-        result = replace_tables_with_placeholders(text, [], "/tmp")
-        assert result == text

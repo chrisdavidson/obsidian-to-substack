@@ -1,8 +1,13 @@
 """Tests for Markdown-table-to-PNG rendering (Phase 2, TBL-01..04, GRD-01)."""
 
+import sys
+from pathlib import Path
+
 import pytest
 from PIL import Image
 
+from obsidian_to_substack import table_handler
+from obsidian_to_substack.convert import convert_article, main
 from obsidian_to_substack.table_handler import (
     extract_tables,
     parse_alignments,
@@ -173,7 +178,7 @@ class TestReplaceTablesWithImages:
         assert '<img src="table-1.png"' in result
         assert (tmp_path / "table-1.png").exists()
 
-    def test_csv_is_still_exported_for_the_datawrapper_route(self, tmp_path):
+    def test_csv_is_still_exported_on_the_image_path(self, tmp_path):
         tables = extract_tables(SIMPLE_TABLE)
         replace_tables_with_images(SIMPLE_TABLE, tables, str(tmp_path))
 
@@ -200,3 +205,48 @@ class TestReplaceTablesWithImages:
     def test_no_tables_leaves_text_untouched(self, tmp_path):
         text = "Just prose.\n"
         assert replace_tables_with_images(text, [], str(tmp_path)) == text
+
+
+class TestDatawrapperRemovalGuards:
+    """Pins the retirement of the --datawrapper flag and its code path.
+
+    Guard A is end-to-end and should already pass against the pre-removal
+    code (a well-formed fixture table renders fine on the local path) — that
+    confirms the guard measures the removal, not the fixture. Guards B and C
+    are structural and start red until the deletions land.
+    """
+
+    def test_convert_article_writes_no_placeholder_comment_and_still_renders_table(
+        self, tmp_path
+    ):
+        source = tmp_path / "article.md"
+        source.write_text(
+            "| A | B |\n| --- | --- |\n| 1 | 2 |\n\nSome prose.\n",
+            encoding="utf-8",
+        )
+        result = convert_article(str(source), str(tmp_path / "out"))
+
+        html = Path(result["html_path"]).read_text(encoding="utf-8")
+        assert "<!-- TABLE" not in html
+
+        out_dir = Path(result["output_dir"])
+        assert (out_dir / "table-1.png").exists()
+        assert (out_dir / "table-1.csv").exists()
+
+    def test_datawrapper_module_is_gone(self):
+        with pytest.raises(ModuleNotFoundError):
+            import obsidian_to_substack.datawrapper  # noqa: F401
+
+    def test_removed_functions_are_gone_from_table_handler(self):
+        assert not hasattr(table_handler, "replace_tables_with_embeds")
+        assert not hasattr(table_handler, "replace_tables_with_placeholders")
+
+    def test_cli_rejects_retired_datawrapper_flag(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["obsidian-to-substack", str(tmp_path), "--datawrapper", "--dry-run"],
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+        assert exc_info.value.code == 2

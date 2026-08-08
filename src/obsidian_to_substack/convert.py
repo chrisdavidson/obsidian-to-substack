@@ -5,7 +5,6 @@ import base64
 import json
 import logging
 import mimetypes
-import os
 import re
 import shutil
 import subprocess
@@ -20,9 +19,7 @@ from obsidian_to_substack.obsidian_syntax import transform_obsidian_syntax
 from obsidian_to_substack.svg_export import export_all_svgs, validate_png
 from obsidian_to_substack.table_handler import (
     extract_tables,
-    replace_tables_with_embeds,
     replace_tables_with_images,
-    replace_tables_with_placeholders,
 )
 from obsidian_to_substack.render_html import (
     extract_leading_title,
@@ -51,7 +48,6 @@ def convert_article(
     svg_dir: str | None = None,
     dpi: int = 192,
     dry_run: bool = False,
-    datawrapper_token: str | None = None,
 ) -> dict:
     """Run the full conversion pipeline on a single article.
 
@@ -89,9 +85,9 @@ def convert_article(
     # Obsidian sources in this corpus carry no frontmatter title and the H1
     # is the live, author-maintained heading; the frontmatter key stays as
     # the deliberate override for a source that does set one. This single
-    # resolved value feeds the Datawrapper chart title, wrap_html, the
-    # written metadata.json, and the CLI's Title line, so none of them can
-    # drift apart.
+    # resolved value feeds the head title element, wrap_html, the written
+    # metadata.json, and the CLI's Title line, so none of them can drift
+    # apart.
     resolved_title = (
         extract_leading_title(body)
         or metadata.get("title", "")
@@ -121,16 +117,9 @@ def convert_article(
     body = rewrite_image_refs(body, copied)
 
     tables = extract_tables(body)
-    if datawrapper_token and tables:
-        body = replace_tables_with_embeds(
-            body, tables, str(article_output),
-            api_token=datawrapper_token,
-            article_title=resolved_title,
-        )
-    else:
-        body = replace_tables_with_images(
-            body, tables, str(article_output), scale=dpi / 96
-        )
+    body = replace_tables_with_images(
+        body, tables, str(article_output), scale=dpi / 96
+    )
 
     body = transform_obsidian_syntax(body, image_map=image_map)
 
@@ -175,7 +164,6 @@ def convert_directory(
     svg_dir: str | None = None,
     dpi: int = 192,
     dry_run: bool = False,
-    datawrapper_token: str | None = None,
 ) -> list[dict]:
     """Convert all .md files in a directory."""
     directory = Path(dir_path)
@@ -191,7 +179,6 @@ def convert_directory(
                 svg_dir=svg_dir,
                 dpi=dpi,
                 dry_run=dry_run,
-                datawrapper_token=datawrapper_token,
             )
             results.append(result)
         except Exception as exc:
@@ -269,11 +256,6 @@ def main() -> None:
         help="Show what would be done without writing files",
     )
     parser.add_argument(
-        "--datawrapper",
-        action="store_true",
-        help="Publish tables to Datawrapper (requires DATAWRAPPER_API_TOKEN env var)",
-    )
-    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Enable verbose logging",
@@ -285,17 +267,6 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-
-    dw_token = None
-    if args.datawrapper:
-        dw_token = os.environ.get("DATAWRAPPER_API_TOKEN")
-        if not dw_token:
-            print(
-                "Error: --datawrapper requires DATAWRAPPER_API_TOKEN environment variable.\n"
-                "Get a token at https://app.datawrapper.de/account/api-tokens",
-                file=sys.stderr,
-            )
-            sys.exit(1)
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
@@ -311,7 +282,6 @@ def main() -> None:
                 svg_dir=args.svg_dir,
                 dpi=args.dpi,
                 dry_run=args.dry_run,
-                datawrapper_token=dw_token,
             )
             results = [result]
         else:
@@ -321,7 +291,6 @@ def main() -> None:
                 svg_dir=args.svg_dir,
                 dpi=args.dpi,
                 dry_run=args.dry_run,
-                datawrapper_token=dw_token,
             )
     except (FileNotFoundError, NotADirectoryError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
