@@ -16,3 +16,6 @@ wheels/
 # Secrets
 datawrapper.key
 *.key
+
+# Converted article output (default --output-dir is ./output)
+output/
