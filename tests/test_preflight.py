@@ -7,6 +7,7 @@ found once should never again be rediscovered by pasting and squinting.
 from PIL import Image
 
 from obsidian_to_substack.preflight import MAX_IMAGE_WIDTH, check, report
+from obsidian_to_substack.render_html import render_to_html, strip_unsupported_elements
 
 
 def _png(path, size=(10, 10)):
@@ -77,6 +78,67 @@ class TestImageChecks:
         broken.write_bytes(b"not a png")
         html = '<body><img src="broken.png"></body>'
         assert any(w.check == "unreadable_image" for w in check(html, tmp_path))
+
+
+class TestFootnoteChecks:
+    """GRD-02 checks for both footnote failure modes found in the v1.0 audit.
+
+    F1: the literal `[^1]` marker surviving into rendered text (hyphen-form
+    definitions that never matched). F2: reference markup surviving with no
+    footnotes section beneath it (the section deleted downstream by the div
+    strip). The "correct output warns on neither" case is built from the
+    real render -> strip chain, not a hand-written snippet — a hand-written
+    snippet could accidentally omit the exact shape the real pipeline
+    produces and pass for the wrong reason.
+    """
+
+    def _real_footnote_html(self):
+        rendered = render_to_html(
+            "Text with note[^1].\n\n[^1]: The footnote content."
+        )
+        return strip_unsupported_elements(rendered)
+
+    def test_warns_on_literal_footnote_marker(self, tmp_path):
+        html = "<body><p>Text with note[^1].</p></body>"
+        assert any(
+            w.check == "footnote_marker_literal" for w in check(html, tmp_path)
+        )
+
+    def test_literal_marker_warning_cites_grd_02(self, tmp_path):
+        html = "<body><p>Text with note[^1].</p></body>"
+        warnings = [
+            w for w in check(html, tmp_path) if w.check == "footnote_marker_literal"
+        ]
+        assert warnings[0].requirement == "GRD-02"
+
+    def test_warns_when_reference_markup_has_no_footnotes_section(self, tmp_path):
+        # The F2 shape: fnref survives, the fn: section is gone.
+        html = '<body><p>Text with note<sup id="fnref:1">1</sup>.</p></body>'
+        assert any(
+            w.check == "footnote_section_missing" for w in check(html, tmp_path)
+        )
+
+    def test_section_missing_warning_cites_grd_02(self, tmp_path):
+        html = '<body><p>Text with note<sup id="fnref:1">1</sup>.</p></body>'
+        warnings = [
+            w for w in check(html, tmp_path) if w.check == "footnote_section_missing"
+        ]
+        assert warnings[0].requirement == "GRD-02"
+
+    def test_correctly_converted_footnote_produces_no_warning(self, tmp_path):
+        html = self._real_footnote_html()
+        warnings = [w for w in check(html, tmp_path) if w.check.startswith("footnote_")]
+        assert warnings == []
+
+    def test_no_footnotes_at_all_produces_no_warning(self, tmp_path):
+        html = "<body><p>Nothing footnote-shaped here.</p></body>"
+        warnings = [w for w in check(html, tmp_path) if w.check.startswith("footnote_")]
+        assert warnings == []
+
+    def test_footnote_shaped_literal_inside_code_does_not_warn(self, tmp_path):
+        html = "<body><pre><code>[^1] - example syntax</code></pre></body>"
+        warnings = [w for w in check(html, tmp_path) if w.check.startswith("footnote_")]
+        assert warnings == []
 
 
 class TestReport:
