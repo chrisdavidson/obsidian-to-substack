@@ -1,6 +1,7 @@
 """Integration tests for the full conversion pipeline."""
 
 import json
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -167,6 +168,47 @@ class TestCopyHtmlToClipboard:
             call_args = mock_run.call_args
             assert call_args[0][0] == ["xclip", "-selection", "clipboard", "-t", "text/html"]
             assert call_args[1]["check"] is True
+
+    def test_xclip_stdio_is_not_inherited(self, tmp_path):
+        """xclip must not inherit our stdout/stderr.
+
+        X11 selections are owned by a live process: xclip forks a background
+        child to serve the clipboard and the parent exits. That child holds any
+        inherited descriptor open for as long as it owns the selection, so if
+        our output is a pipe the reader never sees EOF and the caller stalls
+        forever — even though this process has already exited.
+        """
+        html_file = tmp_path / "article.html"
+        html_file.write_text("<p>Hello</p>", encoding="utf-8")
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/xclip"),
+            patch("subprocess.run") as mock_run,
+        ):
+            copy_html_to_clipboard(str(html_file))
+            kwargs = mock_run.call_args[1]
+            assert kwargs["stdout"] is subprocess.DEVNULL
+            # Not None (inherit), and not PIPE — reading a pipe to EOF would
+            # reintroduce the same stall, since the daemon child holds it open.
+            assert kwargs["stderr"] is not None
+            assert kwargs["stderr"] is not subprocess.PIPE
+
+    def test_reports_xclip_stderr_on_failure(self, tmp_path, capsys):
+        html_file = tmp_path / "article.html"
+        html_file.write_text("<p>Hello</p>", encoding="utf-8")
+
+        def fail(*args, **kwargs):
+            kwargs["stderr"].write(b"Error: Can't open display:\n")
+            raise subprocess.CalledProcessError(1, "xclip")
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/xclip"),
+            patch("subprocess.run", side_effect=fail),
+        ):
+            with pytest.raises(SystemExit):
+                copy_html_to_clipboard(str(html_file))
+
+        assert "Can't open display" in capsys.readouterr().err
 
     def test_inlines_images_before_copy(self, tmp_path):
         from PIL import Image

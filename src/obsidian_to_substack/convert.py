@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import webbrowser
 from pathlib import Path
 
@@ -363,16 +364,36 @@ def copy_html_to_clipboard(html_path: str) -> None:
     html_content = html_path_obj.read_text(encoding="utf-8")
     html_content = _inline_images(html_content, html_path_obj.parent)
 
-    try:
-        subprocess.run(
-            ["xclip", "-selection", "clipboard", "-t", "text/html"],
-            input=html_content.encode("utf-8"),
-            check=True,
-        )
-        print(f"  Copied to clipboard — paste into Substack with Ctrl+V")
-    except subprocess.CalledProcessError as exc:
-        print(f"Error: clipboard copy failed: {exc}", file=sys.stderr)
-        sys.exit(1)
+    # xclip must not inherit our stdout/stderr. An X11 selection is owned by a
+    # live process: xclip forks a background child to serve the clipboard and
+    # the parent exits immediately. That child keeps any inherited descriptor
+    # open for as long as it owns the selection, so when our output is a pipe
+    # the reader never sees EOF and the caller stalls indefinitely — even
+    # though this process has already exited. A terminal has no EOF to wait
+    # for, which is why this only bites scripted use.
+    #
+    # stderr goes to a temp file rather than DEVNULL so xclip's own diagnostics
+    # survive, and rather than PIPE because reading a pipe to EOF would
+    # reintroduce the very stall being avoided.
+    with tempfile.TemporaryFile() as err_file:
+        try:
+            subprocess.run(
+                ["xclip", "-selection", "clipboard", "-t", "text/html"],
+                input=html_content.encode("utf-8"),
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=err_file,
+            )
+        except subprocess.CalledProcessError as exc:
+            err_file.seek(0)
+            detail = err_file.read().decode("utf-8", "replace").strip()
+            print(
+                f"Error: clipboard copy failed: {detail or exc}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+    print("  Copied to clipboard — paste into Substack with Ctrl+V")
 
 
 if __name__ == "__main__":
