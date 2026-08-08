@@ -69,6 +69,38 @@ class TestStripUnsupportedElements:
         assert "<div>" not in result
         assert "Keep" in result
 
+    def test_preserves_footnote_div_and_its_text(self):
+        # F2: strip_unsupported_elements' generic UNSUPPORTED_TAGS loop
+        # decomposes any multi-child div (hr + ol has no .string), deleting
+        # the whole footnotes section. div.footnote must survive that.
+        rendered = render_to_html(
+            "Text with note[^1].\n\n[^1]: The footnote content."
+        )
+        result = strip_unsupported_elements(rendered)
+        assert "The footnote content." in result
+        assert "<ol>" in result
+        assert "<hr" in result
+        assert "<div" not in result
+
+    def test_footnote_backref_leaves_no_residual_glyph(self):
+        # F6: the backref anchor's "↩" glyph must not survive as stray text
+        # once the generic anchor-unwrap loop strips its href.
+        rendered = render_to_html(
+            "Text with note[^1].\n\n[^1]: The footnote content."
+        )
+        result = strip_unsupported_elements(rendered)
+        assert "↩" not in result
+
+    def test_non_footnote_multi_child_div_is_still_decomposed(self):
+        # D-03: the exception is narrow to div.footnote — an ordinary
+        # multi-child div is still destroyed (no behaviour change).
+        html = "<p>Keep</p><div><p>a paragraph</p><p>another paragraph</p></div>"
+        result = strip_unsupported_elements(html)
+        assert "<div" not in result
+        assert "Keep" in result
+        assert "a paragraph" not in result
+        assert "another paragraph" not in result
+
     def test_preserves_style_tag(self):
         html = "<style>body { color: red; }</style><p>Content</p>"
         result = strip_unsupported_elements(html)

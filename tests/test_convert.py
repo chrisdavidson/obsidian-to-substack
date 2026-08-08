@@ -94,6 +94,19 @@ class TestConvertArticle:
             assert not list(Path(tmpdir).rglob("*.html"))
 
 
+class TestFootnoteEndToEnd:
+    def test_torture_fixture_footnote_survives_to_written_html(self, tmp_path):
+        # The shipped file is the artifact — asserting on render_to_html
+        # output alone would have missed F2 (the footnotes section getting
+        # deleted downstream by strip_unsupported_elements).
+        article = str(FIXTURES_DIR / "torture_test" / "torture-test.md")
+        result = convert_article(article, str(tmp_path))
+        html = Path(result["html_path"]).read_text(encoding="utf-8")
+        assert "Z39.19-2005" in html
+        assert "fnref" in html
+        assert "[^1]" not in html
+
+
 class TestConvertDirectory:
     def test_processes_md_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
