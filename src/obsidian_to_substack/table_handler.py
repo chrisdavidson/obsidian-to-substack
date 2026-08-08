@@ -2,7 +2,6 @@
 CSV data sidecar alongside each one."""
 
 import csv
-import io
 import re
 import logging
 from pathlib import Path
@@ -172,14 +171,5 @@ def replace_tables_with_images(
         lines[start:end + 1] = [figure]
 
     return "\n".join(lines)
-
-
-def _rows_to_csv_string(parsed_rows: list[list[str]]) -> str:
-    """Convert parsed rows to a CSV string."""
-    buf = io.StringIO()
-    writer = csv.writer(buf)
-    for row in parsed_rows:
-        writer.writerow(row)
-    return buf.getvalue()
 
 
