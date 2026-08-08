@@ -19,3 +19,7 @@ datawrapper.key
 
 # Converted article output (default --output-dir is ./output)
 output/
+
+# Local planning and tooling — not part of the published project
+.planning/
+.claude/settings.local.json
