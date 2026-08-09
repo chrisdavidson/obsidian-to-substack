@@ -23,6 +23,29 @@ FOOTNOTE_DEF_PATTERN = re.compile(
 )
 FOOTNOTE_REF_PATTERN = re.compile(r"\[\^([^\]]+)\]")
 
+# The vault's private notes-to-self, written as `%%comment%%`. Only two
+# shapes are handled: a same-line inline pair, and a block whose opening
+# and closing markers each sit alone on their own line. A marker that opens
+# mid-line and closes lines later is legal Obsidian but is not observed in
+# the corpus and is deliberately out of scope -- see strip_obsidian_comments'
+# docstring for why a narrow, occasionally-inert stripper beats a general
+# one here.
+OBSIDIAN_COMMENT_MARKER = "%%"
+
+# Alternation order matters: the code-span alternative is tried FIRST, so a
+# code span consumes its own markers before the comment alternative can see
+# them (`Use `%% note %%` for asides.` must survive untouched). The comment
+# alternative is a lazy, non-DOTALL match, so it can never cross a newline
+# or span past the nearest closing marker on the same line -- a lone
+# unmatched marker on a line simply fails to match. Trailing horizontal
+# whitespace after the closing marker is consumed (but leading whitespace
+# before the opening marker is not), which is what keeps
+# "%% note %%    Text" from becoming a four-space indented code block while
+# leaving list indentation at the start of a line untouched.
+INLINE_COMMENT_PATTERN = re.compile(
+    r"(?P<code>`+[^`]*`+)|(?P<comment>%%.*?%%[ \t]*)"
+)
+
 
 def replace_image_embeds(
     text: str,
@@ -67,6 +90,105 @@ def convert_em_dashes(text: str) -> str:
 def _is_fence_delimiter(line: str) -> bool:
     stripped = line.strip()
     return stripped.startswith("```") or stripped.startswith("~~~")
+
+
+def _is_bare_comment_marker(line: str) -> bool:
+    return line.strip() == OBSIDIAN_COMMENT_MARKER
+
+
+def _replace_inline_comment(match: re.Match) -> str:
+    code = match.group("code")
+    if code is not None:
+        return code
+    return ""
+
+
+def strip_obsidian_comments(text: str) -> str:
+    """Remove Obsidian %%comment%% content from the raw Markdown.
+
+    Only two shapes are handled, both observed in a real converted article:
+    a same-line inline pair, and a block delimited by a marker alone on its
+    own line at each end (whose body may itself contain blank lines, which
+    is why this has to run on raw Markdown before rendering -- by the time
+    there is HTML the block has already been split into several separate
+    paragraph elements with nothing left to identify them as one unit).
+
+    A general "opener anywhere, closer anywhere later" scanner would turn
+    two stray, unrelated markers in ordinary prose into the silent deletion
+    of everything between them. This narrow pair of shapes fails the other
+    way instead: an unhandled or unbalanced marker survives in the output
+    and preflight's check on the rendered HTML fires loudly. Inert-and-noisy
+    beats silent-and-destructive, so do not "improve" this into a general
+    scanner.
+
+    Two passes over `text.split("\\n")`, block first so an outer block wins
+    over anything inline inside it. Pure -- builds and returns a new
+    string, never mutates the input.
+    """
+    lines = text.split("\n")
+
+    # Pass one: block form. Walk the lines tracking fenced state (the same
+    # `_is_fence_delimiter` + toggling `in_fence` idiom used below in
+    # normalize_footnote_definitions) and collect the indices of every line
+    # outside a fence whose stripped content is exactly the bare marker.
+    # Pair those indices in document order -- first with second, third with
+    # fourth -- and mark every line in each inclusive range for removal.
+    marker_indices: list[int] = []
+    in_fence = False
+    for index, line in enumerate(lines):
+        if _is_fence_delimiter(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if _is_bare_comment_marker(line):
+            marker_indices.append(index)
+
+    remove: set[int] = set()
+    # zip() over the even- and odd-positioned slices of marker_indices
+    # drops an unmatched trailing marker by construction: it only ever
+    # produces pairs for balanced markers. This is the block half of the
+    # fail-safe -- a document with one stray marker loses its balanced
+    # comments and keeps everything else, including the stray marker
+    # itself, rather than losing its second half to a naive
+    # first-marker-to-last-marker span.
+    for start, end in zip(marker_indices[0::2], marker_indices[1::2]):
+        remove.update(range(start, end + 1))
+
+    block_stripped = [line for index, line in enumerate(lines) if index not in remove]
+
+    # Pass two: inline form. For each surviving line, still tracking fenced
+    # state, skip fenced lines verbatim -- fenced content is never touched
+    # by either pass.
+    result_lines: list[str] = []
+    in_fence = False
+    for line in block_stripped:
+        if _is_fence_delimiter(line):
+            in_fence = not in_fence
+            result_lines.append(line)
+            continue
+        if in_fence:
+            result_lines.append(line)
+            continue
+
+        substituted, count = INLINE_COMMENT_PATTERN.subn(_replace_inline_comment, line)
+        if count == 0:
+            result_lines.append(line)
+            continue
+
+        # Only rstrip a line the substitution actually changed -- an
+        # untouched line keeps a trailing markdown two-space hard line
+        # break intact.
+        stripped = substituted.rstrip()
+        if line.strip() and not stripped:
+            # A line that was non-blank before and is whitespace-only after
+            # is dropped entirely rather than emitted as a blank line -- a
+            # blank line here would split a lazy-continuation paragraph in
+            # two.
+            continue
+        result_lines.append(stripped)
+
+    return "\n".join(result_lines)
 
 
 def normalize_footnote_definitions(text: str) -> str:
@@ -139,12 +261,20 @@ def transform_obsidian_syntax(
 
     Returns a new string; the input is not mutated.
     """
-    # Footnote normalization runs FIRST: convert_em_dashes rewrites a spaced
+    # Comment stripping runs FIRST, ahead of everything else: a footnote
+    # label appearing only inside a comment would otherwise be collected by
+    # normalize_footnote_definitions as a live reference and license a
+    # definition that should not survive, and an embed or link written
+    # inside a comment must never be transformed into markup at all.
+    # Reordering this call silently re-breaks both of those cases.
+    result = strip_obsidian_comments(text)
+
+    # Footnote normalization runs next: convert_em_dashes rewrites a spaced
     # double hyphen into a bare em dash with no surrounding spaces, which
     # would destroy the " -- " separator normalize_footnote_definitions
     # keys on (F5). Reordering this call silently re-breaks hyphen-form
     # footnotes — do not move it.
-    result = normalize_footnote_definitions(text)
+    result = normalize_footnote_definitions(result)
     result = replace_image_embeds(result, image_map)
     result = replace_internal_links(result)
     result = convert_em_dashes(result)
