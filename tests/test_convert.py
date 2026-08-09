@@ -424,6 +424,13 @@ class TestFidelityWiring:
         with patch("obsidian_to_substack.obsidian_syntax.strip_obsidian_comments", buggy):
             result = convert_article(str(source), str(tmp_path / "out"))
 
+        # Guard the fixture itself. If the patch ever stops binding -- the name
+        # is resolved at call time inside transform_obsidian_syntax, which is
+        # not guaranteed to stay that way -- the pipeline would run clean and
+        # this test would quietly assert nothing.
+        html = Path(result["html_path"]).read_text(encoding="utf-8")
+        assert "up from" not in html, "fixture invalid: the patch did not bite"
+
         fidelity_warnings = [
             w for w in result["warnings"] if w.check == "fidelity_loss"
         ]
