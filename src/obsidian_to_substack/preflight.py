@@ -28,6 +28,15 @@ MAX_IMAGE_WIDTH = 2912
 # (F1) and the reference degraded to plain text.
 FOOTNOTE_MARKER_PATTERN = re.compile(r"\[\^[^\]]+\]")
 
+# The Obsidian comment marker. strip_obsidian_comments (obsidian_syntax.py)
+# only handles a same-line pair and a lone-marker-line block, and nothing
+# else, by design — a general "opener anywhere, closer anywhere later"
+# scanner would risk silently deleting prose between two unrelated markers.
+# This check is the other half of that trade-off: an unhandled or
+# unbalanced marker is meant to reach the rendered output and be reported
+# here rather than be silently guessed at.
+OBSIDIAN_COMMENT_MARKER_PATTERN = re.compile(r"%%")
+
 
 @dataclass(frozen=True)
 class Warning_:
@@ -182,6 +191,49 @@ def _check_footnotes(soup: BeautifulSoup) -> list[Warning_]:
     return warnings
 
 
+def _check_obsidian_comments(soup: BeautifulSoup) -> list[Warning_]:
+    """Warn when an Obsidian %%comment%% marker survives into rendered text.
+
+    strip_obsidian_comments only handles a same-line pair and a
+    lone-marker-line block, and nothing else, by design (see the module
+    comment on OBSIDIAN_COMMENT_MARKER_PATTERN) — that narrowness is the
+    defect this check backstops: an unhandled or unbalanced marker is
+    reported here instead of being silently guessed at, so the author's
+    private notes are not one un-warned paste away from going public.
+
+    Searches the soup's text content, not the raw HTML string, for the same
+    reason _check_footnotes does. Two skips, both load-bearing: a marker
+    inside a `code`/`pre` parent is documentation of the syntax, not a
+    failure, and a marker inside an HTML `Comment` node is invisible in the
+    composer and already _check_placeholder_comments' territory — do not
+    remove either skip.
+
+    Unlike _check_footnotes, this emits at most one warning per text node
+    rather than one per match: several stray markers in one paragraph are
+    one defect (an unclosed or unbalanced comment) worth reporting once,
+    not a warning per marker.
+    """
+    warnings = []
+    for text_node in soup.find_all(string=OBSIDIAN_COMMENT_MARKER_PATTERN):
+        if isinstance(text_node, Comment):
+            continue
+        if text_node.find_parent(["code", "pre"]):
+            # Documentation of the syntax, not a failure.
+            continue
+        warnings.append(
+            Warning_(
+                "obsidian_comment",
+                "GRD-02",
+                "A comment marker ('%%') survived into the rendered text. "
+                "The likely cause is an unbalanced or unclosed marker in "
+                "the source — the stripper handles a same-line pair and a "
+                "lone-marker-line block, and nothing else by design. "
+                "Private notes are about to paste into the post.",
+            )
+        )
+    return warnings
+
+
 def _check_slug_title(soup: BeautifulSoup, title_from_slug: bool) -> list[Warning_]:
     """Warn when the title fell back to the filename AND reads as a slug.
 
@@ -242,6 +294,7 @@ def check(
         *_check_duplicate_title(soup),
         *_check_images(soup, base),
         *_check_footnotes(soup),
+        *_check_obsidian_comments(soup),
         *_check_slug_title(soup, title_from_slug),
     ]
 
