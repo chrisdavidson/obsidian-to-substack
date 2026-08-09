@@ -254,6 +254,15 @@ class TestNoFalsePositives:
 
         assert report.is_clean, f"false positive: {report.unaccounted}"
 
+    def test_a_dash_joining_two_words_tokenizes_alike_on_both_sides(self):
+        # The assertion above passes whether or not dashes are handled: with
+        # spaces around it, " -- " yields no token on either side. The case
+        # that would actually bite is a dash gluing two words together, where
+        # the source's "--" must split exactly as the output's em dash does.
+        assert [t.word for t in tokenize("a--b")] == ["a", "b"]
+        assert [t.word for t in tokenize("a—b")] == ["a", "b"]
+        assert [t.word for t in tokenize("a–b")] == ["a", "b"]
+
     def test_smart_quotes_are_not_a_removal(self):
         source = "The author's \"quoted phrase\" stays put.\n"
 

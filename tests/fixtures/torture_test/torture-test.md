@@ -87,6 +87,13 @@ It should render as italic text, not a broken link.
 
 This paragraph carries a private aside inline %% This inline note must never reach Substack %% and it should read as one continuous sentence once the note is gone — if `strip_obsidian_comments` regressed, the note text above will be visible in the pasted body.
 
+Growth was 50%% up from 20%% last year, and both literal percent signs plus
+every word between them must survive — a doubled percent in prose is not a
+comment opener. This is the shape that silently deleted " up from 20" before
+the digit lookbehind landed, and `tools.fidelity_sweep` is what now catches it:
+the live corpus carries no `%%` at all, so this fixture is the only standing
+end-to-end guard on the comment path.
+
 Before the block: this paragraph must survive with the block below removed
 around it.
 

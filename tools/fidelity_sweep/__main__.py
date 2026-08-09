@@ -46,6 +46,7 @@ class ArticleResult:
     name: str
     report: FidelityReport | None = None
     error: str | None = None
+    error_type: str | None = None
 
     @property
     def unaccounted_count(self) -> int:
@@ -67,7 +68,11 @@ def sweep_article(source_path: Path, output_root: Path) -> ArticleResult:
         result = convert_article(str(source_path), str(output_root))
     except Exception as exc:  # noqa: BLE001 - a sweep must survive one bad article
         logger.debug("conversion failed for %s", source_path, exc_info=True)
-        return ArticleResult(name=source_path.name, error=f"{type(exc).__name__}: {exc}")
+        return ArticleResult(
+            name=source_path.name,
+            error=f"{type(exc).__name__}: {exc}",
+            error_type=type(exc).__name__,
+        )
 
     raw_text = source_path.read_text(encoding="utf-8")
     html = Path(result["html_path"]).read_text(encoding="utf-8")
@@ -132,8 +137,13 @@ def summarize(results: list[ArticleResult]) -> str:
     if failed:
         lines.append("## Conversion failures")
         lines.append("")
+        # Exception TYPE only, never the message. `result.error` carries
+        # `str(exc)`, and a UnicodeDecodeError or a parse error embeds a
+        # fragment of the article's own text in it -- which would put article
+        # prose into a file this module promises carries none. The full
+        # message stays on stdout, where the rest of the prose already is.
         for result in failed:
-            lines.append(f"- {result.name} — {result.error}")
+            lines.append(f"- {result.name} — {result.error_type}")
         lines.append("")
 
     return "\n".join(lines)
