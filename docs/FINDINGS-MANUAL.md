@@ -342,6 +342,16 @@ written inside a comment must never be turned into markup at all. A new
 `_check_obsidian_comments` preflight check (`preflight.py`) warns, GRD-02,
 whenever a marker survives into the rendered text anyway.
 
+**Confirmed fixed in Substack on 2026-08-09.** The author converted the same
+article that surfaced the defect and pasted it into the composer: no `%%`
+anywhere in the body, and all six diagrams landed. The pipeline had already
+reported a clean run — zero preflight warnings, zero markers in
+`article.html`, seven of seven image references resolving — but that only
+ever proves the pipeline. The composer is the only place this could be
+settled, and it is now settled. The inline aside and the 34-line
+caption/alt-text block that both reached a real post on 2026-08-08 no longer
+appear.
+
 **Three deliberate limitations, candidly:**
 
 1. **Narrow scope, on purpose.** Only a same-line inline pair and a block
