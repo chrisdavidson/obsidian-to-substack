@@ -64,9 +64,16 @@ from typing import Sequence
 
 from bs4 import BeautifulSoup
 
-# A word is letters, digits and underscores, optionally carrying internal
-# apostrophes. Everything else -- every dash, quote, pipe, hash, asterisk and
-# bracket -- is invisible to the comparison.
+# A word is letters and digits, optionally carrying internal apostrophes.
+# Everything else -- every dash, quote, pipe, hash, asterisk and bracket -- is
+# invisible to the comparison.
+#
+# The underscore is deliberately NOT a word character, though it is one to
+# `\w`. Markdown reads `_italic_` and `__bold__` as emphasis, so the source
+# carries underscores the output does not; treating them as part of the word
+# made `_italic_` and `italic` different tokens and reported live prose as
+# lost. Splitting `snake_case` in a code block is the cost, and it is no cost
+# at all -- both sides split it the same way.
 #
 # That is what makes the whole comparison robust against `smarty` and the
 # ` -- ` em-dash conversion without needing a normalisation pass: source
@@ -74,7 +81,7 @@ from bs4 import BeautifulSoup
 # tokenize identically. Normalising the strings instead would shift character
 # offsets and break span attribution, and would itself be a transform whose
 # bugs could hide a real deletion.
-WORD_PATTERN = re.compile(r"[0-9A-Za-z_]+(?:['’][0-9A-Za-z_]+)*")
+WORD_PATTERN = re.compile(r"[0-9A-Za-z]+(?:['’][0-9A-Za-z]+)*")
 
 # This module's OWN comment rule. See the independence note above -- these
 # deliberately duplicate obsidian_syntax's patterns rather than importing them.
@@ -108,7 +115,19 @@ _ORDERED_MARKER = re.compile(r"^\s*(?P<marker>\d+)[.)]\s")
 _FRONTMATTER = re.compile(r"\A---\r?\n.*?\r?\n---[ \t]*\r?\n", re.DOTALL)
 _IMAGE_EMBED = re.compile(r"!\[\[[^\]]*\]\]")
 _LINK_TARGET = re.compile(r"\]\(([^)]*)\)")
+
+# A markdown image's alt text becomes an `alt` attribute, not body text. The
+# leading "!" is what separates this from an ordinary link, whose visible label
+# does survive and must never be authorized here.
+_IMAGE_ALT = re.compile(r"!\[(?P<alt>[^\]]*)\]\(")
 _FOOTNOTE_MARKER = re.compile(r"\[\^[^\]]+\]")
+
+# A raw HTML tag written into the Markdown. The tag name and its attributes are
+# markup, not prose -- the corpus writes `<u>...</u>` for emphasis, and
+# `strip_unsupported_elements` unwraps `u` while keeping its content, so only
+# the angle-bracket text disappears. Matching the whole tag leaves everything
+# BETWEEN the tags comparable, which is the part that must survive.
+_HTML_TAG = re.compile(r"</?[A-Za-z][A-Za-z0-9]*(?:\s[^>]*?)?/?>")
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(?P<text>.*?)\s*#*\s*$")
 
 
@@ -149,10 +168,25 @@ class FidelityReport:
     unaccounted: tuple[Removal, ...]
     reasons_used: frozenset[str]
     source_word_count: int
+    compared_word_count: int = 0
 
     @property
     def is_clean(self) -> bool:
         return not self.unaccounted
+
+    @property
+    def coverage(self) -> float:
+        """Share of source words actually compared, 0.0-1.0.
+
+        A clean report only means something alongside this number. Every
+        authorized span withholds words from the comparison, so a check that
+        authorized everything would also report clean -- and would be worthless.
+        Coverage is what distinguishes "nothing was lost" from "nothing was
+        looked at."
+        """
+        if not self.source_word_count:
+            return 1.0
+        return self.compared_word_count / self.source_word_count
 
     def format(self) -> str:
         if self.is_clean:
@@ -173,7 +207,9 @@ def tokenize(text: str) -> tuple[Token, ...]:
             word=match.group(0).replace("’", "'"),
             start=match.start(),
             end=match.end(),
-            line=_line_of(match.start(), line_starts),
+            # 1-based: these numbers are read against the source file in an
+            # editor, and a 0-based report sends the author to the wrong line.
+            line=_line_of(match.start(), line_starts) + 1,
         )
         for match in WORD_PATTERN.finditer(text)
     )
@@ -285,8 +321,18 @@ def authorized_spans(
     )
 
     spans.extend(
+        Span(match.start("alt"), match.end("alt"), "image_alt")
+        for match in _IMAGE_ALT.finditer(source)
+    )
+
+    spans.extend(
         Span(match.start(), match.end(), "footnote_marker")
         for match in _FOOTNOTE_MARKER.finditer(source)
+    )
+
+    spans.extend(
+        Span(match.start(), match.end(), "html_tag")
+        for match in _HTML_TAG.finditer(source)
     )
 
     spans.extend(_markup_spans(source))
@@ -363,9 +409,34 @@ def compare(
         for word in WORD_PATTERN.findall(str(cell))
     }
 
+    # Authorized tokens are withheld from the comparison entirely rather than
+    # excused after the fact, and the reason is an alignment trap that made 18
+    # of the first corpus sweep's 20 findings false positives.
+    #
+    # The vault links to the author's own posts, so a link's label and its URL
+    # slug carry the same words:
+    # `[The Architect and the Taxonomy](.../the-architect-and-the-taxonomy)`.
+    # With the URL still in the source sequence, SequenceMatcher is free to
+    # align the output's surviving label against the SOURCE'S URL words and
+    # declare the label itself deleted -- an exactly inverted, and entirely
+    # phantom, finding. Dropping authorized tokens first leaves the label only
+    # one thing it can align to.
+    #
+    # This does not weaken the ledger: every withheld token still had to earn a
+    # named reason, and table words earn theirs by appearing in the extracted
+    # cells rather than by sitting on a table line.
+    comparable: list[Token] = []
+    reasons: set[str] = set()
+    for token in source_tokens:
+        reason = _attribute(token, spans, table_lines, table_words)
+        if reason is None:
+            comparable.append(token)
+        else:
+            reasons.add(reason)
+
     matcher = SequenceMatcher(
         None,
-        [token.word.casefold() for token in source_tokens],
+        [token.word.casefold() for token in comparable],
         output_words,
         # autojunk treats items appearing in more than 1% of a long sequence as
         # noise, which on article-length prose silently drops common words from
@@ -374,33 +445,22 @@ def compare(
     )
 
     unaccounted: list[Removal] = []
-    reasons: set[str] = set()
-    pending: list[Token] = []
-
-    def flush() -> None:
-        if not pending:
-            return
-        unaccounted.append(
-            Removal(text=" ".join(t.word for t in pending), line=pending[0].line)
-        )
-        pending.clear()
-
     for tag, i1, i2, _j1, _j2 in matcher.get_opcodes():
-        if tag == "equal":
-            continue
-        for token in source_tokens[i1:i2]:
-            reason = _attribute(token, spans, table_lines, table_words)
-            if reason is None:
-                pending.append(token)
-            else:
-                reasons.add(reason)
-                flush()
-        flush()
+        if tag in ("delete", "replace"):
+            run = comparable[i1:i2]
+            if run:
+                unaccounted.append(
+                    Removal(
+                        text=" ".join(token.word for token in run),
+                        line=run[0].line,
+                    )
+                )
 
     return FidelityReport(
         unaccounted=tuple(unaccounted),
         reasons_used=frozenset(reasons),
         source_word_count=len(source_tokens),
+        compared_word_count=len(comparable),
     )
 
 
@@ -460,9 +520,10 @@ def _is_fence(line: str) -> bool:
 
 
 def _table_lines(source: str) -> frozenset[int]:
+    """1-based line numbers that look like table rows, matching Token.line."""
     return frozenset(
         index
-        for index, line in enumerate(source.split("\n"))
+        for index, line in enumerate(source.split("\n"), start=1)
         if _TABLE_LINE.match(line)
     )
 
@@ -473,12 +534,20 @@ def _leading_title_span(source: str, resolved_title: str) -> tuple[int, int] | N
     Only a heading whose text matches the resolved title is authorized, and
     only before any body prose -- otherwise a mid-article heading that happened
     to repeat the title would excuse its own deletion.
+
+    The scan starts after the frontmatter block rather than skipping lines that
+    merely look like delimiters. Walking `---` alone stops at the first
+    `tags:` line and gives up, which is how the torture fixture's real title
+    was reported lost.
     """
     wanted = _normalized(resolved_title)
-    offset = 0
-    for line in source.split("\n"):
+
+    frontmatter = _FRONTMATTER.match(source)
+    offset = frontmatter.end() if frontmatter else 0
+
+    for line in source[offset:].split("\n"):
         stripped = line.strip()
-        if stripped and not stripped.startswith("---"):
+        if stripped:
             heading = _HEADING.match(line)
             if heading is None:
                 return None

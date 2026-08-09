@@ -283,6 +283,95 @@ class TestNoFalsePositives:
         assert report.is_clean, f"false positive: {report.unaccounted}"
 
 
+class TestCorpusNoiseCategories:
+    """Each of these was a false positive the first corpus sweep produced.
+
+    Pinned so they cannot come back. Together they took the sweep from 20
+    findings across 11 articles to 0 across 46, at 93.8% word coverage.
+    """
+
+    def test_self_referential_link_does_not_report_its_own_label(self):
+        # 18 of the first sweep's 20 findings were this. The vault links to the
+        # author's own posts, so the label and the URL slug carry the same
+        # words; with the URL left in the comparison, SequenceMatcher aligns
+        # the surviving label against the source's URL and calls the label
+        # deleted.
+        source = (
+            "In [The Architect and the Taxonomy]"
+            "(https://example.com/p/the-architect-and-the-taxonomy), "
+            "we established the frame.\n"
+        )
+
+        report = compare(source, _render(source))
+
+        assert report.is_clean, f"false positive: {report.unaccounted}"
+
+    def test_underscore_emphasis_is_not_reported(self):
+        source = "Underscores too: _italic_ and __bold__.\n"
+
+        report = compare(source, _render(source))
+
+        assert report.is_clean, f"false positive: {report.unaccounted}"
+
+    def test_raw_html_tag_names_are_accounted_for_but_content_is_not(self):
+        # The corpus writes <u>...</u>. strip_unsupported_elements unwraps `u`
+        # and keeps its content, so only the tag text disappears.
+        source = "- <u>A system of classification</u>\n"
+
+        report = compare(source, _render(source))
+
+        assert report.is_clean, f"false positive: {report.unaccounted}"
+        assert "html_tag" in report.reasons_used
+
+    def test_markdown_image_alt_text_is_accounted_for(self):
+        source = "![A caption for the image](diagram.png)\n"
+
+        report = compare(source, _render(source))
+
+        assert report.is_clean, f"false positive: {report.unaccounted}"
+        assert "image_alt" in report.reasons_used
+
+    def test_title_is_found_after_a_frontmatter_block(self):
+        # Walking "---" alone stops at the first `tags:` line and gives up,
+        # which reported the torture fixture's real title as lost.
+        source = "---\ntags:\n  - fixture\n---\n# The Real Title\n\nBody.\n"
+        html = "<html><body><p>Body.</p></body></html>"
+
+        report = compare(source, html, resolved_title="The Real Title")
+
+        assert report.is_clean, f"false positive: {report.unaccounted}"
+        assert "title" in report.reasons_used
+
+
+class TestCoverage:
+    """A clean report means nothing without knowing how much was compared."""
+
+    def test_coverage_reports_the_compared_share(self):
+        source = "Plain prose with no authorized spans at all.\n"
+
+        report = compare(source, _render(source))
+
+        assert report.coverage == 1.0
+
+    def test_coverage_falls_when_spans_withhold_words(self):
+        source = "---\ntitle: x\ntags: [alpha, beta, gamma]\n---\n\nShort body.\n"
+
+        report = compare(source, _render("\nShort body.\n"))
+
+        assert report.is_clean
+        assert report.coverage < 1.0
+
+    def test_line_numbers_are_one_based(self):
+        # A 0-based report sends the author to the wrong line in their editor.
+        source = "first line\nsecond line\n"
+        html = "<html><body><p>first line</p></body></html>"
+
+        report = compare(source, html)
+
+        assert report.unaccounted
+        assert report.unaccounted[0].line == 2
+
+
 class TestIndependenceFromThePipeline:
     """The comparator's comment rule must be its own, not the stripper's."""
 
