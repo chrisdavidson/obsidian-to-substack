@@ -107,6 +107,33 @@ class TestFootnoteEndToEnd:
         assert "[^1]" not in html
 
 
+class TestObsidianCommentEndToEnd:
+    def test_torture_fixture_comments_are_absent_from_written_html(self, tmp_path):
+        # The shipped file is the artifact -- asserting on
+        # transform_obsidian_syntax output alone would miss a downstream
+        # stage silently reintroducing the comment text, or the preflight
+        # check firing on the fenced counter-example it must stay silent on.
+        article = str(FIXTURES_DIR / "torture_test" / "torture-test.md")
+        result = convert_article(article, str(tmp_path))
+        html = Path(result["html_path"]).read_text(encoding="utf-8")
+
+        assert "This inline note must never reach Substack" not in html
+        assert "This working note must never reach Substack either" not in html
+
+        # The prose immediately around each comment survives untouched.
+        assert "Before the block: this paragraph must survive" in html
+        assert "After the block: this paragraph must also survive" in html
+
+        # The fenced counter-example is exempt from stripping and survives
+        # visibly -- the only end-to-end proof of the code/pre skip.
+        assert (
+            "this literal marker documents the syntax and must survive visibly"
+            in html
+        )
+
+        assert not any(w.check == "obsidian_comment" for w in result["warnings"])
+
+
 class TestSlugTitleEndToEnd:
     """convert_article must hand preflight the fact that the fallback fired.
 

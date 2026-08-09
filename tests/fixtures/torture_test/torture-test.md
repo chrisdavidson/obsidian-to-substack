@@ -83,6 +83,33 @@ It should render as italic text, not a broken link.
 
 ![A caption for the markdown-style image](torture-diagram.png)
 
+## Obsidian comments
+
+This paragraph carries a private aside inline %% This inline note must never reach Substack %% and it should read as one continuous sentence once the note is gone — if `strip_obsidian_comments` regressed, the note text above will be visible in the pasted body.
+
+Before the block: this paragraph must survive with the block below removed
+around it.
+
+%%
+This working note must never reach Substack either. It documents caption
+and alt-text ideas for a diagram, exactly like the real defect that prompted
+this fix — an opening marker alone on its own line, a body that
+
+spans a blank line, and a closing marker alone on its own line.
+%%
+
+After the block: this paragraph must also survive, proving the block took
+only itself and not its neighbours.
+
+A fenced example documents the syntax rather than using it, and must survive
+visibly — this is the only end-to-end proof that the `code`/`pre` exemption
+in the preflight check holds, since it leaves a real marker in the written
+HTML that must not trigger a GRD-02 warning:
+
+```
+%% this literal marker documents the syntax and must survive visibly %%
+```
+
 ## Closing
 
 If every construct above survived the paste with no manual repair, ACPT-01
