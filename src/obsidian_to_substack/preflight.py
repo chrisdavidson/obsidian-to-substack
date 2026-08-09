@@ -35,7 +35,15 @@ FOOTNOTE_MARKER_PATTERN = re.compile(r"\[\^[^\]]+\]")
 # This check is the other half of that trade-off: an unhandled or
 # unbalanced marker is meant to reach the rendered output and be reported
 # here rather than be silently guessed at.
-OBSIDIAN_COMMENT_MARKER_PATTERN = re.compile(r"%%")
+#
+# The digit lookbehind mirrors INLINE_COMMENT_PATTERN's: the stripper
+# refuses to read a digit-preceded marker as a comment opener because a
+# doubled percent is legal prose ("50%% up from 20%%"). This check has to
+# agree with it. A bare `%%` here would report a defect that does not
+# exist and that the author cannot act on — the false-positive noise
+# _check_slug_title and _check_footnotes were written to refuse. Change
+# one of these two patterns and you must change the other.
+OBSIDIAN_COMMENT_MARKER_PATTERN = re.compile(r"(?<![0-9])%%")
 
 
 @dataclass(frozen=True)
