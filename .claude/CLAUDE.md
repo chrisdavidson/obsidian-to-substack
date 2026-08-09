@@ -89,6 +89,7 @@ purpose, after a past defect where a wider strip ate the footnotes subtree.
 uv run pytest -q                                  # the suite
 uv run python -m obsidian_to_substack.convert <dir> [--file X.md] [--output-dir …]
 uv run python -m tools.substack_diff --all        # regenerate docs/FINDINGS.md
+uv run python -m tools.fidelity_sweep [--show]    # corpus fidelity census
 ```
 
 External surfaces: `xclip` for `--copy` (Linux/X11 only — body to CLIPBOARD as
@@ -140,7 +141,7 @@ so rather than hand-editing it.
 
 ## Architecture
 
-One package, `src/obsidian_to_substack/`, ~2,000 lines across ten focused modules.
+One package, `src/obsidian_to_substack/`, ~2,400 lines across eleven focused modules.
 `convert.py` is the orchestrator and CLI; everything else is a transformation it calls in
 sequence. Full detail in `.planning/ARCHITECTURE.md`.
 
@@ -169,6 +170,34 @@ Two ordering hazards, both commented in-code — read the comments before reorde
 narrow transformation. Current checks: `duplicate_title`, `footnote_marker_literal`,
 `footnote_section_missing`, `image_too_large`, `image_too_wide`, `missing_image`,
 `obsidian_comment`, `slug_title`, `table_placeholder`, `unreadable_image`.
+
+**`fidelity.py` is the other axis, and it is not part of the pipeline.** Preflight asks
+whether the output is valid; `fidelity.compare(source_md, html, ...)` asks whether the
+output still contains what the author wrote. It is an accounting ledger — every removed run
+must be attributable to a named reason whose evidence is held in hand (frontmatter, the
+resolved title, the extracted table cells, a comment span), and anything left over is
+reported. Tables are *reconciled* against `extract_tables`' cells rather than excused by
+sitting on a table line, because a dropped row sits on one too.
+
+**It must never call the pipeline's transforms**, and the module says so at length. Calling
+`strip_obsidian_comments` to decide what was legitimately removed makes a bug inside it
+invisible by construction — both sides delete the same prose and agree. So `comment_spans`
+re-derives the rule from scratch. This is a *considered departure* from the convention two
+paragraphs up: sharing is right for preflight, which inspects output for surviving markers
+and where sharing prevents false positives; it is wrong here, where the subject is what was
+deleted and sharing produces false negatives. Do not tidy it by importing the shared
+constant.
+
+The two checks are complementary and neither replaces the other — **preflight catches what
+leaked, fidelity catches what vanished.** With an odd marker count the stripper fails closed
+and strips nothing, so a comment leaks (loudly, into preflight) while fidelity correctly
+reports clean.
+
+`tools/fidelity_sweep` runs it across the corpus. Baseline 2026-08-09: **46/46 clean, 0
+unaccounted removals, 93.8% word coverage.** Always quote the coverage beside the zero —
+every authorized span withholds words, so a check that authorized everything reads clean
+too. The corpus currently contains no `%%` at all, so a corpus-wide probe proves nothing
+about the comment path; validate that one by injecting a trigger into a temp copy.
 
 `tests/fixtures/torture_test/` is one synthetic article carrying every construct that has
 ever broken. Adding to it is the cheapest end-to-end guard available.
