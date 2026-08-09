@@ -1,6 +1,7 @@
 """Integration tests for the full conversion pipeline."""
 
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -385,3 +386,58 @@ class TestCopyTitleToPrimary:
         ):
             copy_title_to_primary("")
             mock_run.assert_not_called()
+
+
+class TestFidelityWiring:
+    """convert_article must surface a fidelity loss, not just be able to detect one.
+
+    The unit tests prove the comparator works; these prove it is actually
+    reached from the pipeline with the right evidence in hand.
+    """
+
+    def _write(self, tmp_path: Path, text: str) -> Path:
+        source = tmp_path / "article.md"
+        source.write_text(text, encoding="utf-8")
+        return source
+
+    def test_faithful_conversion_raises_no_fidelity_warning(self, tmp_path):
+        source = self._write(
+            tmp_path,
+            "# A Title\n\nA paragraph that survives.\n\nAnother one.\n",
+        )
+
+        result = convert_article(str(source), str(tmp_path / "out"))
+
+        assert not [w for w in result["warnings"] if w.check == "fidelity_loss"]
+
+    def test_a_regressed_stripper_is_caught_end_to_end(self, tmp_path):
+        # The 260809-a1o defect, driven through the real pipeline: a doubled
+        # percent in prose read as a comment deletes " up from 20".
+        source = self._write(
+            tmp_path,
+            "# A Title\n\nGrowth was 50%% up from 20%% last year.\n",
+        )
+
+        def buggy(text: str) -> str:
+            return re.sub(r"%%.*?%%[ \t]*", "", text)
+
+        with patch("obsidian_to_substack.obsidian_syntax.strip_obsidian_comments", buggy):
+            result = convert_article(str(source), str(tmp_path / "out"))
+
+        fidelity_warnings = [
+            w for w in result["warnings"] if w.check == "fidelity_loss"
+        ]
+        assert fidelity_warnings, "the pipeline lost prose and said nothing"
+        assert "up" in fidelity_warnings[0].message
+
+    def test_table_text_does_not_warn_when_it_reached_the_cells(self, tmp_path):
+        # Tables are replaced by images, so their prose leaves the HTML. It
+        # must be accounted for by the extracted rows, not reported.
+        source = self._write(
+            tmp_path,
+            "# A Title\n\n| Region | Revenue |\n|---|---|\n| North | 1200 |\n",
+        )
+
+        result = convert_article(str(source), str(tmp_path / "out"))
+
+        assert not [w for w in result["warnings"] if w.check == "fidelity_loss"]

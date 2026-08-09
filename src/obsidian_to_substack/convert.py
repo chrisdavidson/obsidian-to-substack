@@ -143,8 +143,22 @@ def convert_article(
         json.dumps(written_metadata, indent=2, default=str), encoding="utf-8"
     )
 
+    # The fidelity check gets the RAW file text, not `body` — `body` has
+    # already been through frontmatter splitting and image rewriting by now,
+    # and comparing against it would silently exempt anything those stages
+    # dropped. fidelity re-derives the frontmatter block itself.
+    #
+    # `tables` still holds the rows extracted above, before
+    # replace_tables_with_images consumed them. That is the evidence that lets
+    # table prose count as relocated into the PNG rather than lost — a row
+    # extraction dropped is not in here, and is reported.
     warnings = preflight.check(
-        html_doc, article_output, title_from_slug=title_from_slug
+        html_doc,
+        article_output,
+        title_from_slug=title_from_slug,
+        source_markdown=raw_text,
+        resolved_title=resolved_title,
+        tables=[rows for _start, _end, _raw, rows in tables],
     )
 
     result = {

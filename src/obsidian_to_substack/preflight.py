@@ -11,10 +11,19 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Sequence
 
 from bs4 import BeautifulSoup, Comment
 
+from obsidian_to_substack import fidelity
+
 logger = logging.getLogger(__name__)
+
+# How many lost runs the fidelity warning quotes, and how much of each. A
+# badly broken run can lose most of an article; printing it back would bury
+# the warning in the prose it is reporting.
+FIDELITY_QUOTE_LIMIT = 3
+FIDELITY_QUOTE_CHARS = 120
 
 # Substack rejects images above this size.
 MAX_IMAGE_MB = 10.0
@@ -291,13 +300,93 @@ def _check_slug_title(soup: BeautifulSoup, title_from_slug: bool) -> list[Warnin
     ]
 
 
+def _check_fidelity(
+    html: str,
+    source_markdown: str | None,
+    resolved_title: str,
+    tables: Sequence[Sequence[Sequence[str]]],
+) -> list[Warning_]:
+    """Warn when source text vanished from the output with no accounting.
+
+    The other half of `_check_obsidian_comments`, and the inverse of every
+    other check here. The rest of this module inspects the output for
+    something that should not be in it; this one inspects it for something
+    that should. Both are needed and neither substitutes for the other: when
+    the stripper fails closed on an unbalanced marker it removes nothing, so a
+    private note leaks and `_check_obsidian_comments` fires while this stays
+    silent — correctly, because nothing was deleted.
+
+    Skipped entirely when `source_markdown` is None. Every caller predating
+    this check passes two positional arguments, and without the source there
+    is nothing to compare against — reporting that the whole document vanished
+    would be worse than reporting nothing.
+
+    One warning for the entire document, not one per lost run. The corpus
+    sweep that cleared this check for wiring showed why: 18 of its first 20
+    findings shared a single root cause, and a warning per run would have read
+    as 18 defects. `_check_obsidian_comments` made the same call for the same
+    reason.
+
+    The delegation to `fidelity.compare` is deliberate and must stay a
+    delegation. `fidelity` refuses to call the pipeline's transforms so that a
+    bug inside one cannot hide from it; that guarantee is the module's whole
+    value and it is not preflight's to relax.
+    """
+    if source_markdown is None:
+        return []
+
+    report_ = fidelity.compare(
+        source_markdown,
+        html,
+        resolved_title=resolved_title,
+        tables=tables,
+    )
+    if report_.is_clean:
+        return []
+
+    # Quote the first few losses only, and truncate each. A badly broken run
+    # can lose most of an article, and printing it back would bury the warning
+    # in the very prose it is reporting. The line numbers are what the author
+    # acts on; the text is there to make the finding recognisable.
+    quoted = []
+    for removal in report_.unaccounted[:FIDELITY_QUOTE_LIMIT]:
+        text = removal.text
+        if len(text) > FIDELITY_QUOTE_CHARS:
+            text = text[:FIDELITY_QUOTE_CHARS].rstrip() + "…"
+        quoted.append(f"line {removal.line}: {text!r}")
+
+    remainder = len(report_.unaccounted) - len(quoted)
+    if remainder > 0:
+        quoted.append(f"and {remainder} more")
+
+    return [
+        Warning_(
+            "fidelity_loss",
+            "GRD-02",
+            f"{len(report_.unaccounted)} run(s) of source text were dropped "
+            f"from the output with no accountable reason "
+            f"({report_.coverage:.0%} of source words were compared). "
+            f"This is text the author wrote that a reader will not see, and "
+            f"unlike a surviving marker it leaves nothing behind in the post "
+            f"to notice. " + "; ".join(quoted),
+        )
+    ]
+
+
 def check(
-    html: str, base_dir: str | Path, *, title_from_slug: bool = False
+    html: str,
+    base_dir: str | Path,
+    *,
+    title_from_slug: bool = False,
+    source_markdown: str | None = None,
+    resolved_title: str = "",
+    tables: Sequence[Sequence[Sequence[str]]] = (),
 ) -> list[Warning_]:
     """Run every preflight check against rendered output.
 
-    `title_from_slug` is keyword-only and defaulted so the two-positional-arg
-    call shape keeps working.
+    Every argument after `base_dir` is keyword-only and defaulted so the
+    two-positional-arg call shape keeps working. `source_markdown` additionally
+    gates the fidelity check off when it is absent — see `_check_fidelity`.
     """
     soup = BeautifulSoup(html, "html.parser")
     base = Path(base_dir)
@@ -309,6 +398,7 @@ def check(
         *_check_footnotes(soup),
         *_check_obsidian_comments(soup),
         *_check_slug_title(soup, title_from_slug),
+        *_check_fidelity(html, source_markdown, resolved_title, tables),
     ]
 
 
