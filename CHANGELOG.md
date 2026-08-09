@@ -5,6 +5,68 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] — 2026-08-09
+
+Checks the other direction. Every release up to now made sure the output was
+*valid*; this one makes sure it still contains what you wrote.
+
+The reason is a real defect. On 2026-08-08 a published post carried an inline
+aside and a 34-line caption block that had been written as `%%comments%%` — and
+the author did not catch it by reading the post. It surfaced by accident, days
+later. Then the fix for it turned out to be more dangerous than the defect: its
+first cut silently deleted real prose, turning `Growth was 50%% up from 20%%
+last year.` into `Growth was 50last year.` A leaked marker is visible. Deleted
+text leaves nothing behind to notice, which is why it needs a machine.
+
+### Added
+
+- **Fidelity checking.** Every word of the source must arrive in the output or
+  be attributable to a reason the converter can name — frontmatter, the title it
+  stripped, a table it turned into an image, a comment it removed, a link target
+  that moved into an attribute. Anything else is reported as a `fidelity_loss`
+  preflight warning. It runs on every conversion; there is nothing to remember.
+
+  Built as an accounting ledger rather than a diff with an exclusion list, which
+  matters most for tables: table prose is *relocated* into the PNG and CSV, not
+  vanished, so it reconciles against the extracted cells. A row the extractor
+  dropped sits on a table line too, and is still reported.
+
+- **`tools/fidelity_sweep`** — runs the same check across a whole vault at once.
+  Reports findings alongside a coverage figure, because the two numbers are only
+  meaningful together: every authorised removal withholds words from the
+  comparison, so a check that authorised everything would also read clean.
+
+  Baseline across the author's 46-article corpus: **46/46 clean, 0 unaccounted
+  removals, 93.8% of source words compared.**
+
+### Changed
+
+- `preflight.check()` takes three new keyword-only arguments — `source_markdown`,
+  `resolved_title` and `tables`. All are defaulted and the two-positional-argument
+  call shape is unchanged. Omitting `source_markdown` disables the fidelity check
+  rather than reporting that the whole document vanished.
+- The README now carries a platform note under Requirements: conversion is
+  cross-platform, but `--copy` shells out to `xclip` and fails immediately on
+  macOS and Windows. Previously you found that out by running it.
+- The torture fixture gained a digit-preceded literal percent, so the comment
+  path has a standing end-to-end guard. The live corpus contains no `%%` at all,
+  which means a corpus sweep alone proves nothing about that path.
+
+### Notes
+
+The fidelity comparator deliberately does **not** call the converter's own
+transforms to decide what was legitimately removed. If it did, a bug inside one
+of them would be invisible: both sides would delete the same prose and agree,
+and the defect above would report clean. It re-derives those rules
+independently, and says so at length in the source.
+
+Preflight and fidelity are complementary and neither replaces the other:
+preflight catches what leaked, fidelity catches what vanished. When the comment
+stripper meets an unbalanced marker it fails closed and removes nothing — so a
+private note leaks, preflight fires, and fidelity correctly stays silent.
+
+325 tests pass, up from 284.
+
 ## [1.0.0] — 2026-08-09
 
 First public release. Tables, SVG diagrams, images, wikilinks, formatting and
@@ -76,4 +138,5 @@ Recorded rather than absorbed — each was established by hand against a real dr
   hand-off additionally needs a browser that honours middle-click paste of the
   primary selection.
 
+[1.1.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.1
 [1.0.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.0
