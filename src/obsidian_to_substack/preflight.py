@@ -227,8 +227,13 @@ def _check_obsidian_comments(soup: BeautifulSoup) -> list[Warning_]:
                 "A comment marker ('%%') survived into the rendered text. "
                 "The likely cause is an unbalanced or unclosed marker in "
                 "the source — the stripper handles a same-line pair and a "
-                "lone-marker-line block, and nothing else by design. "
-                "Private notes are about to paste into the post.",
+                "lone-marker-line block, and nothing else by design. Note "
+                "that an odd number of lone-marker lines makes the stripper "
+                "skip block removal for the WHOLE document rather than "
+                "risk deleting the prose between an unclosed opener and the "
+                "next comment, so this output may be entirely unfiltered. "
+                "Close the stray marker in the source and re-run. Private "
+                "notes are about to paste into the post.",
             )
         )
     return warnings

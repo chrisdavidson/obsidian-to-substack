@@ -42,8 +42,16 @@ OBSIDIAN_COMMENT_MARKER = "%%"
 # before the opening marker is not), which is what keeps
 # "%% note %%    Text" from becoming a four-space indented code block while
 # leaving list indentation at the start of a line untouched.
+#
+# The opening marker must sit at the start of the line or follow whitespace.
+# A doubled percent is legal prose ("Growth was 50%% up from 20%%"), and
+# without this boundary the two literals read as one comment and " up from
+# 20" is deleted outright -- silent prose loss, with nothing surviving for
+# preflight to warn about. A marker glued to the end of a word therefore
+# never opens a comment; it survives and preflight reports it. Matching is
+# done per line, so "^" here means start-of-line without needing MULTILINE.
 INLINE_COMMENT_PATTERN = re.compile(
-    r"(?P<code>`+[^`]*`+)|(?P<comment>%%.*?%%[ \t]*)"
+    r"(?P<code>`+[^`]*`+)|(?P<comment>(?:^|(?<=\s))%%.*?%%[ \t]*)"
 )
 
 
@@ -121,6 +129,20 @@ def strip_obsidian_comments(text: str) -> str:
     beats silent-and-destructive, so do not "improve" this into a general
     scanner.
 
+    Two fail-safes enforce that asymmetry, and both are load-bearing:
+
+    * An odd number of lone-marker lines means some comment is unclosed.
+      Rather than pair positionally and risk pairing an unclosed opener
+      with the next comment's opener -- deleting the prose between them --
+      the block pass strips nothing at all for that document.
+    * An opening marker only counts at the start of a line or after
+      whitespace, so a doubled percent in ordinary prose ("50%% up from
+      20%%") is never read as a comment.
+
+    In both cases the markers survive into the rendered HTML, where
+    preflight's `_check_obsidian_comments` reports them. Deleted prose is
+    unrecoverable and silent; a surviving comment is neither.
+
     Two passes over `text.split("\\n")`, block first so an outer block wins
     over anything inline inside it. Pure -- builds and returns a new
     string, never mutates the input.
@@ -145,15 +167,20 @@ def strip_obsidian_comments(text: str) -> str:
             marker_indices.append(index)
 
     remove: set[int] = set()
-    # zip() over the even- and odd-positioned slices of marker_indices
-    # drops an unmatched trailing marker by construction: it only ever
-    # produces pairs for balanced markers. This is the block half of the
-    # fail-safe -- a document with one stray marker loses its balanced
-    # comments and keeps everything else, including the stray marker
-    # itself, rather than losing its second half to a naive
-    # first-marker-to-last-marker span.
-    for start, end in zip(marker_indices[0::2], marker_indices[1::2]):
-        remove.update(range(start, end + 1))
+    # An odd marker count means at least one comment is unclosed, and which
+    # one is the stray is unknowable from the text. Pairing positionally
+    # from the top would pair an unclosed opener with the NEXT comment's
+    # opening marker and delete the real prose sitting between them. So the
+    # whole block pass bails on an odd count: nothing is removed and every
+    # marker survives for preflight to report.
+    #
+    # This is the block half of the fail-safe, and it is deliberately
+    # asymmetric. Deleted prose is unrecoverable and leaves nothing behind
+    # to warn about; a surviving comment is recoverable and is loud. Do not
+    # "improve" this into a best-effort partial strip.
+    if len(marker_indices) % 2 == 0:
+        for start, end in zip(marker_indices[0::2], marker_indices[1::2]):
+            remove.update(range(start, end + 1))
 
     block_stripped = [line for index, line in enumerate(lines) if index not in remove]
 
