@@ -43,6 +43,53 @@ def slugify(name: str) -> str:
     return slug.strip("-")
 
 
+def _resolve_default_svg_dir(source_dir: Path, slug: str) -> Path:
+    """Pick the default SVG source directory when the caller supplies none.
+
+    Pure: reads the filesystem, returns a new Path, mutates nothing.
+
+    (a) Why the per-slug directory is preferred. The vault moved to
+    per-article subdirectories, <source_dir>/svg/<slug>/*.svg. The flat
+    parent <source_dir>/svg/ still exists (it holds every article's
+    subdirectory), so a caller's is_dir() check on the flat directory still
+    passes even though this article's diagrams are not directly inside it.
+    export_all_svgs globs *.svg non-recursively, so it finds nothing there,
+    image_map comes back empty, and replace_image_embeds still performs the
+    .svg -> .png embed swap unconditionally — the written HTML ends up with
+    <img> tags for files nobody generated. Measured on a real article: six
+    such missing_image warnings (DIAG-02). Preferring the per-slug directory
+    when it exists closes the gap at the source.
+
+    (b) Why export_all_svgs' glob stays non-recursive. It flattens every SVG
+    to its basename in the output directory. A recursive sweep over the flat
+    svg/ would export every article's diagrams into every article's output
+    dir and collide on any shared basename. The per-slug preference here is
+    the whole fix — the glob itself is deliberately untouched.
+
+    (c) Why an explicit svg_dir is never probed. It is the operator's
+    override; the caller of this helper only reaches it on the None branch.
+    Probing an explicit path for a same-named per-slug sibling would let a
+    stale nested directory silently outrank a directory the caller named on
+    purpose.
+
+    (d) Why the flat directory stays in convert_article's search_dirs for
+    raster embeds even after this helper picks the per-slug directory. Only
+    SVGs moved into per-slug subdirectories — a raster image the article
+    embeds directly may still sit in the flat svg/. Dropping the flat
+    directory from the raster search would reintroduce the same
+    broken-<img src> defect this fix closes, from the other side.
+
+    is_dir() is the sole test — not "exists and holds at least one .svg". A
+    contains-check would silently fall back to the flat directory on a
+    typo'd per-slug directory name, hiding the mistake; is_dir() lets that
+    empty case surface loudly instead, as a missing_image preflight warning.
+    """
+    nested = source_dir / "svg" / slug
+    if nested.is_dir():
+        return nested
+    return source_dir / "svg"
+
+
 def convert_article(
     input_path: str,
     output_dir: str,
@@ -66,6 +113,12 @@ def convert_article(
         metadata, body = parse_frontmatter(raw_text)
         tables = extract_tables(body)
         svg_count = 0
+        # svg_count has only ever counted an explicitly supplied --svg-dir —
+        # it has never counted the default directory, flat or per-slug. This
+        # fix does not touch dry_run (the per-slug resolution below lives
+        # only on the non-dry-run path), so it neither creates nor worsens
+        # that pre-existing reporting gap. Fixing it would need its own test
+        # and is left as a separate follow-up.
         if svg_dir:
             svg_path = Path(svg_dir)
             svg_count = len(list(svg_path.glob("*.svg"))) if svg_path.is_dir() else 0
@@ -97,8 +150,9 @@ def convert_article(
     title_from_slug = not authored_title
 
     image_map: dict[str, str] = {}
+    svg_dir_was_explicit = svg_dir is not None
     if svg_dir is None:
-        svg_dir = str(source.parent / "svg")
+        svg_dir = str(_resolve_default_svg_dir(source.parent, slug))
     if Path(svg_dir).is_dir():
         image_map = export_all_svgs(svg_dir, str(article_output), scale=dpi / 96)
 
@@ -113,7 +167,24 @@ def convert_article(
     # Embeds that already name a raster file are not rasterized by
     # export_all_svgs, so copy them in — otherwise the <img src> points at a
     # file that is not next to article.html and pastes broken (DIAG-02).
-    search_dirs = [source.parent, Path(svg_dir)] if svg_dir else [source.parent]
+    #
+    # search_dirs is a strict superset of what it was before the per-slug
+    # fix: the article's own directory and the resolved svg_dir are always
+    # included; the flat <article dir>/svg is folded in too, but only when
+    # svg_dir was defaulted (an explicit --svg-dir is the operator's
+    # override and gets nothing added) and only when it differs from the
+    # already-resolved directory (avoiding a redundant duplicate when the
+    # default resolved to the flat directory in the first place). This is
+    # what keeps a flat raster embed findable even when the per-slug SVG
+    # directory wins — see _resolve_default_svg_dir's point (d). It does not
+    # reintroduce the non-recursive-glob hazard: copy_raster_embeds only
+    # copies files an embed actually names, so a shared flat directory can
+    # never pull another article's diagrams into this output dir.
+    search_dirs = [source.parent, Path(svg_dir)]
+    if not svg_dir_was_explicit:
+        flat_svg_dir = source.parent / "svg"
+        if flat_svg_dir not in search_dirs:
+            search_dirs.append(flat_svg_dir)
     copied = copy_raster_embeds(body, search_dirs, str(article_output))
     image_map.update(copied)
     body = rewrite_image_refs(body, copied)
