@@ -287,6 +287,97 @@ class TestSlugTitleCheck:
         assert not any(w.check == "slug_title" for w in warnings)
 
 
+class TestFidelityCheck:
+    """GRD-02: warn when the pipeline dropped source text with no accounting.
+
+    The other half of `fidelity.py`. Preflight catches what leaked into the
+    output; this catches what vanished from it. Wired in only after the corpus
+    sweep measured 0 findings across 46 articles at 93.8% word coverage — the
+    same noise-control bar `_check_slug_title` had to clear.
+    """
+
+    def test_silent_deletion_warns(self, tmp_path):
+        source = "Intro line.\n\nThis whole paragraph was dropped.\n"
+        html = "<html><body><p>Intro line.</p></body></html>"
+
+        warnings = check(html, tmp_path, source_markdown=source)
+
+        fidelity = [w for w in warnings if w.check == "fidelity_loss"]
+        assert len(fidelity) == 1, "one defect, one warning"
+        assert fidelity[0].requirement == "GRD-02"
+        assert "dropped" in fidelity[0].message
+
+    def test_faithful_output_never_warns(self, tmp_path):
+        source = "Intro line.\n\nA second paragraph.\n"
+        html = "<html><body><p>Intro line.</p><p>A second paragraph.</p></body></html>"
+
+        warnings = check(html, tmp_path, source_markdown=source)
+
+        assert not any(w.check == "fidelity_loss" for w in warnings)
+
+    def test_omitting_the_source_skips_the_check(self, tmp_path):
+        # Every existing caller passes two positional args. The check must be
+        # inert for them rather than warning that the whole document vanished.
+        html = "<html><body><p>anything</p></body></html>"
+
+        warnings = check(html, tmp_path)
+
+        assert not any(w.check == "fidelity_loss" for w in warnings)
+
+    def test_authorized_removals_never_warn(self, tmp_path):
+        # Frontmatter and the stripped H1 both legitimately disappear.
+        source = "---\ntags: [x]\n---\n# The Title\n\nBody text.\n"
+        html = "<html><body><p>Body text.</p></body></html>"
+
+        warnings = check(
+            html, tmp_path, source_markdown=source, resolved_title="The Title"
+        )
+
+        assert not any(w.check == "fidelity_loss" for w in warnings)
+
+    def test_table_rows_are_accounted_for_when_extracted(self, tmp_path):
+        source = "| A | B |\n|---|---|\n| c | d |\n"
+        html = "<html><body></body></html>"
+
+        warnings = check(
+            html,
+            tmp_path,
+            source_markdown=source,
+            tables=[[["A", "B"], ["c", "d"]]],
+        )
+
+        assert not any(w.check == "fidelity_loss" for w in warnings)
+
+    def test_message_names_the_count_and_quotes_the_loss(self, tmp_path):
+        source = "Keep this.\n\nalpha beta gamma\n\nAlso keep.\n\ndelta epsilon\n"
+        html = "<html><body><p>Keep this.</p><p>Also keep.</p></body></html>"
+
+        warnings = check(html, tmp_path, source_markdown=source)
+        message = next(w.message for w in warnings if w.check == "fidelity_loss")
+
+        assert "2" in message
+        assert "alpha beta gamma" in message
+
+    def test_the_quoted_loss_is_length_capped(self, tmp_path):
+        # A whole missing article must not print itself into the terminal.
+        source = "Keep.\n\n" + " ".join(f"word{n}" for n in range(400)) + "\n"
+        html = "<html><body><p>Keep.</p></body></html>"
+
+        warnings = check(html, tmp_path, source_markdown=source)
+        message = next(w.message for w in warnings if w.check == "fidelity_loss")
+
+        assert len(message) < 1000
+
+    def test_line_number_points_at_the_source(self, tmp_path):
+        source = "one\n\nthree is gone\n"
+        html = "<html><body><p>one</p></body></html>"
+
+        warnings = check(html, tmp_path, source_markdown=source)
+        message = next(w.message for w in warnings if w.check == "fidelity_loss")
+
+        assert "line 3" in message
+
+
 class TestReport:
     def test_clean_output_produces_no_report(self, tmp_path):
         assert report(check("<body><p>fine</p></body>", tmp_path)) == ""
