@@ -342,7 +342,7 @@ written inside a comment must never be turned into markup at all. A new
 `_check_obsidian_comments` preflight check (`preflight.py`) warns, GRD-02,
 whenever a marker survives into the rendered text anyway.
 
-**Two deliberate limitations, candidly:**
+**Three deliberate limitations, candidly:**
 
 1. **Narrow scope, on purpose.** Only a same-line inline pair and a block
    whose opening and closing markers each sit alone on their own line are
@@ -354,7 +354,25 @@ whenever a marker survives into the rendered text anyway.
    instead — an unhandled or unbalanced marker survives and the new
    preflight check fires loudly. Inert-and-noisy beats
    silent-and-destructive.
-2. **Pre-strip rasterization of embeds and tables inside a comment.** In
+2. **An unbalanced document is not stripped at all, and a doubled percent
+   in prose is never an opener.** The first cut of this fix paired
+   lone-marker lines positionally from the top of the document. That was
+   wrong in a way the preflight check could not catch: an unclosed opener
+   pairs with the *next* comment's opening marker, and the real prose
+   between them is deleted with no marker left behind to warn about. The
+   inline pattern had the same class of bug against ordinary prose —
+   `Growth was 50%% up from 20%% last year.` read as a comment and became
+   `Growth was 50last year.`
+
+   Both now fail closed. An odd number of lone-marker lines makes the block
+   pass strip *nothing* for that document, and an opening marker only
+   counts at the start of a line or after whitespace. The cost is that one
+   unclosed comment leaves the whole document's comments in place, and a
+   marker glued to a word survives — in both cases loudly, since every
+   surviving marker trips the preflight check. That is the intended
+   trade: deleted prose is unrecoverable and silent, a surviving comment
+   is neither.
+3. **Pre-strip rasterization of embeds and tables inside a comment.** In
    `convert.py`, raster-embed copying and table extraction both run
    *before* `transform_obsidian_syntax`. An image embed or a table sitting
    inside a comment still rasterizes to disk and still inflates
