@@ -1,5 +1,7 @@
 """Tests for Obsidian syntax transformations."""
 
+import pytest
+
 from obsidian_to_substack.obsidian_syntax import (
     convert_em_dashes,
     normalize_footnote_definitions,
@@ -367,6 +369,26 @@ class TestStripObsidianComments:
         text = "%% Source data for the diagram above. %%"
         result = strip_obsidian_comments(text)
         assert result == ""
+
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            ("Some sentence.%% note %%", "Some sentence."),
+            (">%% note %%", ">"),
+            ("text—%% note %%", "text—"),
+            ("(%% note %%)", "()"),
+            ("word%% note %%", "word"),
+        ],
+    )
+    def test_opener_after_punctuation_or_a_letter_is_still_stripped(
+        self, text, expected
+    ):
+        # The literal-percent guard must stay pinned to the actual hazard
+        # -- a DIGIT before the marker. Requiring whitespace instead would
+        # silently stop stripping comments glued to a full stop, a
+        # blockquote marker, an em dash or a word, all of which are
+        # ordinary in the vault's prose.
+        assert strip_obsidian_comments(text) == expected
 
     # --- Contract ---
 
