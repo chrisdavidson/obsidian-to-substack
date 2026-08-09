@@ -113,6 +113,17 @@ spreadsheet or reuse elsewhere.
   as `[^1] - text`, which Markdown does not recognise (it wants `[^1]: text`);
   that form is normalized rather than left to degrade into literal `[^1]` in
   your post.
+- **`%%Obsidian comments%%`** — removed, so your private notes-to-self stay
+  private. Both shapes are handled: an inline `%%…%%` pair on one line, and a
+  block whose opening and closing markers each sit alone on their own line
+  (its body may contain blank lines). Comment markers inside a code fence or an
+  inline code span are left alone, so an article that *documents* the syntax
+  still renders. Two cases are deliberately refused rather than guessed at: an
+  odd number of lone markers means a comment is unclosed, so **nothing** is
+  stripped for that document, and a marker preceded by a digit is read as a
+  literal percentage (`50%% up from 20%%`), not as a comment. In both cases the
+  markers survive and the preflight check says so — deleting the wrong prose is
+  silent and unrecoverable, a surviving comment is neither.
 - **`[[Wikilinks]]`** — rendered as italic text, since the destination note
   doesn't exist outside your vault.
 - **` -- `** — converted to a proper em dash.

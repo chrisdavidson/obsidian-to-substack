@@ -17,8 +17,11 @@ wheels/
 datawrapper.key
 *.key
 
-# Converted article output (default --output-dir is ./output)
+# Converted article output (default --output-dir is ./output). These hold
+# real vault-derived articles — never publish them.
 output/
+output*/
+tagmap.json
 
 # Local planning and tooling — not part of the published project
 .planning/
