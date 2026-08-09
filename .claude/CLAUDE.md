@@ -9,12 +9,19 @@ moves from Obsidian to Substack fine by hand; everything else doesn't — tables
 structure, SVG diagrams aren't supported at all, and Obsidian's `![[embed]]` and
 `[[wikilink]]` syntax means nothing to Substack's composer. The tool handles that payload.
 
-It serves its author today, publishing to <https://foxglenacres.substack.com> from
-`~/Obsidian/BrainBank/4_Archive/Published Articles`. Release to other Obsidian writers is
-an aspiration, not a current requirement.
+It serves its author, publishing to <https://foxglenacres.substack.com> from
+`~/Obsidian/BrainBank/4_Archive/Published Articles`. It serves exactly one person, and as
+of 2026-08-09 that is a decision rather than a stage — release to other Obsidian writers is
+**closed, not deferred**. The code is public; the audience is not. Do not propose packaging,
+PyPI or cross-platform work without a named person asking for it.
 
-**Core Value:** Tables, SVG diagrams, and charts survive the move from Obsidian into a Substack post
-**without manual repair in the composer.**
+**Core Value 1 — Transport (satisfied by v1.0):** Tables, SVG diagrams, and charts survive
+the move from Obsidian into a Substack post **without manual repair in the composer.**
+
+**Core Value 2 — Integrity (live):** What reaches the composer is what the author wrote —
+**nothing added, nothing silently removed.** Named 2026-08-09 on evidence: every defect
+found since the v1.0 audit was a content-integrity defect, and one of them (leaked `%%`
+comment content) reached a live published post without the author noticing on review.
 
 ### Current State
 
@@ -24,9 +31,10 @@ Substack draft, verified by live paste rather than inference. The fix history th
 lived only in the author's memory is now `docs/FINDINGS-MANUAL.md`, regenerated into
 `docs/FINDINGS.md` by `tools/substack_diff`.
 
-No milestone is currently active — see `.planning/ROADMAP.md`'s Backlog for candidates.
-Work since v1.0 has run as `/gsd-quick` tasks; `.planning/phases/` was never created, so
-audits verify from primary evidence rather than phase records.
+No milestone is active, and none is warranted — the 2026-08-09 altitude check pruned the
+Backlog to a single live item (a source-to-output fidelity diff, `/gsd-quick`-sized).
+**Quick tasks, not the phase pipeline, is now a recorded decision**, not an accident:
+`.planning/phases/` will not exist and audits verify from primary evidence.
 
 Three limitations are recorded rather than absorbed: the title is placed by hand (Substack
 never fills its title field from pasted body content), image alignment is not controllable
@@ -37,11 +45,17 @@ never fills its title field from pasted body content), image alignment is not co
 - **Tech stack**: Python ≥3.11; CairoSVG, Pillow, Markdown, BeautifulSoup4, PyYAML —
   established and working, no reason to churn it
 
-- **Verification**: Human-in-the-loop and unautomatable — Substack has no API for
-  rendering checks, so every verification cycle needs the author to paste and report
+- **Verification**: split — do not restate this as blanket "unautomatable." Substack's
+  *rendering* has no API, so any rendering question needs the author to paste and report.
+  The pipeline's *own output fidelity* is mechanically checkable, and most of the defect
+  history lived there — literal `[^1]` markers, placeholder comments, unresolved image
+  paths, leaked `%%` comments, inline HTML drawn into PNGs were all visible in
+  `article.html`. Reach for the cheap mechanical check first
 
-- **Platform**: `--copy` shells out to `xclip`, so clipboard support is Linux/X11 only —
-  acceptable while the audience is one person
+- **Platform**: `--copy` shells out to `xclip`, so clipboard support is Linux/X11 only. The
+  audience is one person, so this stands — but the 2026-08-09 public release means a
+  non-Linux downloader can now reach the failure, so the README carries a platform note.
+  Accepted failure mode, recorded rather than fixed
 
 - **Secrets**: `*.key` is gitignored
 

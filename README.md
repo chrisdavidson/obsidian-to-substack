@@ -16,6 +16,11 @@ the Substack composer.
   falls back to Inkscape if available)
 - `xclip` — only for `--copy` on Linux
 
+> **Platform note.** Conversion itself is cross-platform, but `--copy` is **Linux/X11
+> only** — it shells out to `xclip` and will fail immediately on macOS or Windows. The tool
+> is built for and used by a single Linux author; everything else works, but you will need
+> to copy `article.html` by hand. See [Known limitations](#known-limitations).
+
 ## Install
 
 ```bash
