@@ -186,6 +186,26 @@ class TestObsidianCommentCheck:
         warnings = [w for w in check(html, tmp_path) if w.check == "obsidian_comment"]
         assert warnings == []
 
+    def test_literal_double_percent_after_a_digit_does_not_warn(self, tmp_path):
+        # strip_obsidian_comments refuses to read a digit-preceded marker as
+        # a comment opener, so this text is correct output, not a survivor.
+        # The check has to agree with the stripper or it reports a defect
+        # that does not exist and that the author cannot act on -- exactly
+        # the false-positive noise _check_slug_title and _check_footnotes
+        # were written to refuse.
+        html = "<body><p>Growth was 50%% up from 20%% last year.</p></body>"
+        warnings = [w for w in check(html, tmp_path) if w.check == "obsidian_comment"]
+        assert warnings == []
+
+    def test_unclosed_marker_alongside_a_literal_percent_still_warns(
+        self, tmp_path
+    ):
+        # The digit exemption must not swallow a real survivor sharing the
+        # paragraph with a legitimate percentage.
+        html = "<body><p>Growth hit 50%% %% but check this figure</p></body>"
+        warnings = [w for w in check(html, tmp_path) if w.check == "obsidian_comment"]
+        assert len(warnings) == 1
+
     def test_marker_inside_html_comment_does_not_warn(self, tmp_path):
         # Invisible in the composer, and already _check_placeholder_comments'
         # territory.
