@@ -565,3 +565,109 @@ class TestSvgDirResolution:
         assert (output_dir / "sample-diagram.png").exists()
         assert (output_dir / "photo.png").exists()
         assert not [w for w in result["warnings"] if w.check == "missing_image"]
+
+
+class TestDryRunSvgCount:
+    """dry_run must report the SVG count the real run would export.
+
+    It is the same rule seen from the other side of TestSvgDirResolution:
+    the real path resolves svg_dir through _resolve_default_svg_dir before
+    exporting, and dry_run's contract is to predict that run, not to guess
+    at it with its own ad-hoc logic. Every case below calls convert_article
+    with dry_run=True and asserts on the numeric result["svg_count"] --
+    never merely that the call succeeded -- because a wrong count that
+    happens to be an int would pass a weaker assertion silently.
+    """
+
+    def _write_article(self, tmp_path: Path, body: str) -> str:
+        source = tmp_path / "my-article.md"
+        source.write_text(body, encoding="utf-8")
+        return str(source)
+
+    def test_nested_slug_directory_is_counted_with_no_svg_dir_passed(
+        self, tmp_path
+    ):
+        # Pins the fix itself: with svg_dir defaulted, the per-slug
+        # directory's SVG must be counted rather than reported as 0. Delete
+        # this and a dry-run against the vault's current per-article layout
+        # goes back to silently lying about what the real run would export.
+        svg_subdir = tmp_path / "svg" / "my-article"
+        svg_subdir.mkdir(parents=True)
+        shutil.copy(
+            FIXTURES_DIR / "sample-diagram.svg", svg_subdir / "sample-diagram.svg"
+        )
+
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[sample-diagram.svg]]\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"), dry_run=True)
+
+        assert result["svg_count"] == 1
+
+    def test_flat_svg_directory_is_counted_with_no_svg_dir_passed(self, tmp_path):
+        # Guards the fallback layout: no per-slug subdirectory exists, so
+        # the flat svg/ itself must be counted. This was already wrong
+        # before a364bc5 -- delete this case and the flat-layout dry-run
+        # regresses too, not just the per-slug one.
+        svg_dir = tmp_path / "svg"
+        svg_dir.mkdir()
+        shutil.copy(FIXTURES_DIR / "sample-diagram.svg", svg_dir / "sample-diagram.svg")
+
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[sample-diagram.svg]]\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"), dry_run=True)
+
+        assert result["svg_count"] == 1
+
+    def test_explicit_svg_dir_is_not_second_guessed(self, tmp_path):
+        # Regression guard on the rewrite: an explicitly passed svg_dir is
+        # the one path the ad-hoc branch already handled correctly, and the
+        # rewrite must not start probing it for a per-slug sibling. The
+        # decoy directory holds two SVGs the real svg_dir does not name --
+        # counting either would prove the decoy got probed.
+        explicit_dir = tmp_path / "explicit"
+        explicit_dir.mkdir()
+        shutil.copy(
+            FIXTURES_DIR / "sample-diagram.svg", explicit_dir / "sample-diagram.svg"
+        )
+
+        decoy_dir = tmp_path / "svg" / "my-article"
+        decoy_dir.mkdir(parents=True)
+        shutil.copy(
+            FIXTURES_DIR / "sample-diagram.svg", decoy_dir / "decoy-diagram.svg"
+        )
+        shutil.copy(
+            FIXTURES_DIR / "sample-diagram.svg", decoy_dir / "decoy-diagram-2.svg"
+        )
+
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[sample-diagram.svg]]\n\nBody.\n"
+        )
+        result = convert_article(
+            article, str(tmp_path / "out"), svg_dir=str(explicit_dir), dry_run=True
+        )
+
+        assert result["svg_count"] == 1
+
+    def test_unreferenced_svgs_still_count(self, tmp_path):
+        # Pins an explicitly out-of-scope boundary mechanically rather than
+        # leaving it to a comment nobody greps: export_all_svgs exports
+        # every *.svg in the resolved directory on the real run, orphans
+        # included, so a dry-run that counted referenced-only would
+        # disagree with the run it claims to predict.
+        svg_subdir = tmp_path / "svg" / "my-article"
+        svg_subdir.mkdir(parents=True)
+        shutil.copy(
+            FIXTURES_DIR / "sample-diagram.svg", svg_subdir / "sample-diagram.svg"
+        )
+        shutil.copy(
+            FIXTURES_DIR / "sample-diagram.svg", svg_subdir / "orphan-diagram.svg"
+        )
+
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[sample-diagram.svg]]\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"), dry_run=True)
+
+        assert result["svg_count"] == 2
