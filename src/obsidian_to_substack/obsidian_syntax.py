@@ -43,15 +43,20 @@ OBSIDIAN_COMMENT_MARKER = "%%"
 # "%% note %%    Text" from becoming a four-space indented code block while
 # leaving list indentation at the start of a line untouched.
 #
-# The opening marker must sit at the start of the line or follow whitespace.
-# A doubled percent is legal prose ("Growth was 50%% up from 20%%"), and
-# without this boundary the two literals read as one comment and " up from
-# 20" is deleted outright -- silent prose loss, with nothing surviving for
-# preflight to warn about. A marker glued to the end of a word therefore
-# never opens a comment; it survives and preflight reports it. Matching is
-# done per line, so "^" here means start-of-line without needing MULTILINE.
+# A marker preceded by a DIGIT never opens a comment. A doubled percent is
+# legal prose ("Growth was 50%% up from 20%% last year."), and without this
+# guard the two literals read as one comment and " up from 20" is deleted
+# outright -- silent prose loss, with nothing surviving for preflight to
+# warn about.
+#
+# The guard is a digit lookbehind and not a whitespace requirement on
+# purpose. Requiring whitespace before the opener looks safer but silently
+# stops stripping every comment glued to a full stop, a blockquote ">", an
+# em dash, a bracket or a word -- all ordinary in the vault's prose, and all
+# cases where the comment would then ship. Only the digit case is a real
+# ambiguity, so only the digit case is rejected.
 INLINE_COMMENT_PATTERN = re.compile(
-    r"(?P<code>`+[^`]*`+)|(?P<comment>(?:^|(?<=\s))%%.*?%%[ \t]*)"
+    r"(?P<code>`+[^`]*`+)|(?P<comment>(?<![0-9])%%.*?%%[ \t]*)"
 )
 
 
@@ -135,9 +140,11 @@ def strip_obsidian_comments(text: str) -> str:
       Rather than pair positionally and risk pairing an unclosed opener
       with the next comment's opener -- deleting the prose between them --
       the block pass strips nothing at all for that document.
-    * An opening marker only counts at the start of a line or after
-      whitespace, so a doubled percent in ordinary prose ("50%% up from
-      20%%") is never read as a comment.
+    * A marker preceded by a digit never opens a comment, so a doubled
+      percent in ordinary prose ("50%% up from 20%%") is not read as one.
+      The guard is deliberately just the digit case: requiring whitespace
+      before the opener would stop stripping comments glued to a full
+      stop, a blockquote marker, an em dash or a word, and ship them.
 
     In both cases the markers survive into the rendered HTML, where
     preflight's `_check_obsidian_comments` reports them. Deleted prose is
