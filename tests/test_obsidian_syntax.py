@@ -297,23 +297,76 @@ class TestStripObsidianComments:
 
     # --- Fail-safe: never delete to end of document ---
 
-    def test_odd_number_of_markers_leaves_unmatched_tail_verbatim(self):
-        # The balanced pair before the unmatched marker is removed; the
-        # unmatched marker and everything after it survive verbatim.
+    def test_odd_number_of_block_markers_strips_no_block_at_all(self):
+        # An odd count means at least one marker is unclosed, and which
+        # marker is the stray one is unknowable. Pairing positionally from
+        # the top would pair an unclosed opener with the NEXT comment's
+        # opener and silently delete the real prose in between (see
+        # test_unclosed_opener_does_not_swallow_the_prose_after_it).
+        # Deleted prose is unrecoverable; a surviving comment is not, and
+        # preflight's check fires on every marker left behind. So the whole
+        # block pass bails: nothing is removed, everything survives.
         text = (
             "Before.\n\n%%\nblock1\n%%\n\n"
             "%%\nafter this marker everything survives"
         )
         result = strip_obsidian_comments(text)
-        assert result == (
-            "Before.\n\n\n%%\nafter this marker everything survives"
-        )
+        assert result == text
+        assert "block1" in result
+
+    def test_unclosed_opener_does_not_swallow_the_prose_after_it(self):
+        # The case the bail exists for. With positional pairing the first
+        # marker (unclosed) would pair with the second (the real comment's
+        # opener), taking "Keep me." with it.
+        text = "%%\n\nKeep me.\n\n%%\nreal note\n%%\n\nEnd."
+        result = strip_obsidian_comments(text)
+        assert result == text
+        assert "Keep me." in result
+
+    def test_even_block_markers_still_strip_normally(self):
+        # The bail is scoped to the odd case only -- a balanced document is
+        # unaffected by it.
+        text = "Before.\n\n%%\nblock1\n%%\n\nAfter."
+        result = strip_obsidian_comments(text)
         assert "block1" not in result
+        assert "Before." in result
+        assert "After." in result
 
     def test_inline_line_with_single_unmatched_marker_is_unchanged(self):
         text = "Some text %% unmatched"
         result = strip_obsidian_comments(text)
         assert result == text
+
+    # --- Fail-safe: a literal doubled percent in prose is not an opener ---
+
+    def test_literal_double_percent_in_prose_is_not_treated_as_a_comment(self):
+        # "50%% up from 20%%" has two markers on one line, so a bare
+        # `%%.*?%%` reads it as a comment and deletes " up from 20" --
+        # silent prose loss with nothing left to warn about. An opening
+        # marker must sit at the start of the line or follow whitespace, so
+        # a marker glued to the end of a word can never open a comment.
+        text = "Growth was 50%% up from 20%% last year."
+        result = strip_obsidian_comments(text)
+        assert result == text
+
+    def test_single_literal_double_percent_is_unchanged(self):
+        text = "Use 100%% of the budget."
+        result = strip_obsidian_comments(text)
+        assert result == text
+
+    def test_real_comment_survives_alongside_a_literal_percent(self):
+        # The guard must not cost us the real case: the comment's opener
+        # follows a space and is still stripped, while the literal stays.
+        text = "The rate rose 5%% %% but check this %% today."
+        result = strip_obsidian_comments(text)
+        assert result == "The rate rose 5%% today."
+
+    def test_comment_at_line_start_is_still_an_opener(self):
+        # Start-of-line counts as a boundary even with no whitespace
+        # before it -- this is the shape observed in the real article.
+        text = "%% Source data for the diagram above. %%"
+        result = strip_obsidian_comments(text)
+        assert result == ""
 
     # --- Contract ---
 
