@@ -112,16 +112,37 @@ def convert_article(
     if dry_run:
         metadata, body = parse_frontmatter(raw_text)
         tables = extract_tables(body)
-        svg_count = 0
-        # svg_count has only ever counted an explicitly supplied --svg-dir —
-        # it has never counted the default directory, flat or per-slug. This
-        # fix does not touch dry_run (the per-slug resolution below lives
-        # only on the non-dry-run path), so it neither creates nor worsens
-        # that pre-existing reporting gap. Fixing it would need its own test
-        # and is left as a separate follow-up.
-        if svg_dir:
-            svg_path = Path(svg_dir)
-            svg_count = len(list(svg_path.glob("*.svg"))) if svg_path.is_dir() else 0
+        # dry_run answers the same question the real path answers at
+        # convert_article's line ~155 -- which directory holds this
+        # article's SVGs -- so it asks _resolve_default_svg_dir instead of
+        # deciding for itself. The two branches used to disagree: this one
+        # counted only an explicitly supplied --svg-dir and reported 0 for
+        # every default case, including the pre-a364bc5 flat layout. If a
+        # later edit re-inlines directory logic here instead of calling the
+        # shared helper, that divergence returns; check the real path's call
+        # site (same helper, same two arguments) before changing either.
+        #
+        # svg_count means every *.svg in the resolved directory -- the exact
+        # set export_all_svgs would export on the real run, orphans
+        # included, because dry-run's contract is to predict that run
+        # rather than to be cleverer than it. It does NOT mean raster
+        # embeds (it never has) and it does NOT mean the real run's
+        # png_files length -- that also includes table PNGs and copied
+        # rasters, and validate_png can drop an export, so the two are
+        # different quantities by construction and no test should
+        # cross-compare them.
+        #
+        # The guard below moved from `if svg_dir:` to `if svg_dir is None:`.
+        # One honest semantic change rides along: a caller passing
+        # svg_dir="" used to get 0; it now resolves to Path("."), which
+        # is_dir() passes, and globs the working directory -- because that
+        # is precisely what the real path already does at line ~154. No
+        # test pins the empty-string case; it is a consequence of sharing
+        # the rule, not a feature in its own right.
+        if svg_dir is None:
+            svg_dir = str(_resolve_default_svg_dir(source.parent, slug))
+        svg_path = Path(svg_dir)
+        svg_count = len(list(svg_path.glob("*.svg"))) if svg_path.is_dir() else 0
         return {
             "slug": slug,
             "metadata": metadata,
@@ -319,7 +340,11 @@ def main() -> None:
     parser.add_argument(
         "--svg-dir",
         default=None,
-        help="SVG source directory override (default: <directory>/svg/)",
+        help=(
+            "SVG source directory override "
+            "(default: <directory>/svg/<slug>/ when it exists, "
+            "otherwise <directory>/svg/)"
+        ),
     )
     parser.add_argument(
         "--file",

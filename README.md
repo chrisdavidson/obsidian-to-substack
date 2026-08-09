@@ -92,7 +92,7 @@ will replace the clipboard.
 | --- | --- | --- |
 | `--output-dir` | `./output` | Where converted articles are written |
 | `--file` | — | Process a single `.md` file instead of the whole directory |
-| `--svg-dir` | `<directory>/svg/` | Override the SVG source directory |
+| `--svg-dir` | `<directory>/svg/<slug>/` if it exists, else `<directory>/svg/` | Override the SVG source directory |
 | `--dpi` | `192` | PNG export resolution |
 | `--copy` | off | Body HTML to the clipboard, title to the primary selection (requires `xclip`) |
 | `--open` | off | Open the result in your browser |
