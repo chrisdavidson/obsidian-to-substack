@@ -16,9 +16,21 @@ an aspiration, not a current requirement.
 **Core Value:** Tables, SVG diagrams, and charts survive the move from Obsidian into a Substack post
 **without manual repair in the composer.**
 
-The "without manual repair" clause is the whole milestone. A v1 already exists and
-produces output that reaches publication — but only after hand-fixing that has never been
-recorded, and that varies article to article.
+### Current State
+
+**v1.0 shipped 2026-08-08** — 21/21 requirements, audit passed. The core value is met:
+tables, SVG diagrams, images, wikilinks, formatting and footnotes all survive into a
+Substack draft, verified by live paste rather than inference. The fix history that once
+lived only in the author's memory is now `docs/FINDINGS-MANUAL.md`, regenerated into
+`docs/FINDINGS.md` by `tools/substack_diff`.
+
+No milestone is currently active — see `.planning/ROADMAP.md`'s Backlog for candidates.
+Work since v1.0 has run as `/gsd-quick` tasks; `.planning/phases/` was never created, so
+audits verify from primary evidence rather than phase records.
+
+Three limitations are recorded rather than absorbed: the title is placed by hand (Substack
+never fills its title field from pasted body content), image alignment is not controllable
+(Substack centres every image itself), and `--copy` is Linux/X11 only.
 
 ### Constraints
 
@@ -37,29 +49,115 @@ recorded, and that varies article to article.
   headed to GitHub and planning is local workflow state. GSD commit steps on planning
   files are expected no-ops.
 
-- **Testing**: 228 tests currently pass; new defects get pinned by tests, per the author's
-  "fixes + automated guards" decision
+- **Testing**: 284 tests currently pass (`uv run pytest -q`); new defects get pinned by
+  tests, per the author's "fixes + automated guards" decision. This count goes stale —
+  run the suite rather than trusting the number.
+
+- **Vault content**: article prose never enters this repo; tests use synthetic fixtures.
+  The vault is also unversioned — never bulk-write to it.
 <!-- GSD:project-end -->
 
 <!-- GSD:stack-start source:STACK.md -->
 
 ## Technology Stack
 
-Technology stack not yet documented. Will populate after codebase mapping or first phase.
+**Python ≥3.11.** CairoSVG (SVG→PNG), Pillow (PNG validation, table images), Markdown
+(extensions: `tables`, `footnotes`, `fenced_code`, `smarty`), BeautifulSoup4 (HTML
+post-processing and every preflight check), PyYAML (frontmatter). Dev: pytest ≥8.0,
+pytest-cov. No linter or formatter is wired in — match the surrounding style by hand.
+
+`render_html.strip_unsupported_elements` removes exactly `{div, u, script}` — narrow on
+purpose, after a past defect where a wider strip ate the footnotes subtree.
+
+**Run everything through `uv`** — there is no bare `python` on this machine:
+
+```bash
+uv run pytest -q                                  # the suite
+uv run python -m obsidian_to_substack.convert <dir> [--file X.md] [--output-dir …]
+uv run python -m tools.substack_diff --all        # regenerate docs/FINDINGS.md
+```
+
+External surfaces: `xclip` for `--copy` (Linux/X11 only — body to CLIPBOARD as
+`text/html`, resolved title to PRIMARY); the Obsidian vault, read-only and outside the
+repo; and Substack itself, which has **no API for rendering checks** — that is the binding
+constraint on the whole project.
 <!-- GSD:stack-end -->
 
 <!-- GSD:conventions-start source:CONVENTIONS.md -->
 
 ## Conventions
 
-Conventions not yet established. Will populate as patterns emerge during development.
+Observed in the codebase and its history, not aspirations. Full detail in
+`.planning/CONVENTIONS.md`.
+
+**The test lands first.** The commit history is a `test:` commit that fails, then a
+`feat:`/`fix:` commit that makes it pass. Do not merge the two. Conventional types in use:
+`docs`, `test`, `feat`, `fix`, `refactor`, `chore`. No attribution trailer. A defect is not
+fixed until it is pinned by a unit test, a preflight check, or the torture fixture.
+
+**Fail closed, and be loud.** The recurring rule across `obsidian_syntax.py` and
+`preflight.py`: a transformation that cannot be certain does nothing and lets preflight
+report it. Mangled or deleted prose is unrecoverable and leaves nothing to warn about; an
+untransformed construct is recoverable and visible. So transformations are deliberately
+narrow and refuse ambiguous input — `normalize_footnote_definitions` only rewrites labels
+referenced elsewhere, `strip_obsidian_comments` bails entirely on an unbalanced marker
+count and never reads a digit-preceded `%%` as an opener, `_check_slug_title` fires only on
+a measured condition. **Do not generalize any of them.** Each carries an in-code comment
+saying what regresses if you do.
+
+Where a transform and a check make the same judgement, they share the rule and say so —
+change one and you must change the other. Preflight checks skip `code`/`pre` parents and
+HTML `Comment` nodes, because an article that *documents* a syntax is correct output.
+
+**Comments explain why.** Long explanatory comments are the house style and they earn their
+length: which ordering is load-bearing, which narrowness is intentional. When you make a
+call a later reader would plausibly undo, say so in the code.
+
+**Purity.** Transformations take a string and return a new one; nothing is mutated in
+place. Several modules carry a `test_pure_function_no_mutation` test — add one with any new
+transformation. Type-annotate every signature.
+
+**`docs/FINDINGS.md` is generated.** Edit `docs/FINDINGS-MANUAL.md` and regenerate via
+`tools/substack_diff`. If the vault is unreachable, leave the generated file alone and say
+so rather than hand-editing it.
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
 
 ## Architecture
 
-Architecture not yet mapped. Follow existing patterns found in the codebase.
+One package, `src/obsidian_to_substack/`, ~2,000 lines across ten focused modules.
+`convert.py` is the orchestrator and CLI; everything else is a transformation it calls in
+sequence. Full detail in `.planning/ARCHITECTURE.md`.
+
+**The pipeline order is load-bearing** — several past defects were ordering bugs, not logic
+bugs. `convert_article()` runs: frontmatter split → title resolution (authored H1 wins,
+else the filename slug, with `title_from_slug` passed to preflight because the rendered
+`<title>` looks identical either way) → `export_all_svgs` + `validate_png` →
+`copy_raster_embeds` + `rewrite_image_refs` → `extract_tables` +
+`replace_tables_with_images` → `transform_obsidian_syntax` → `render_to_html` →
+`strip_duplicate_title` → `wrap_html` → `strip_unsupported_elements` → write
+`article.html`/`metadata.json` → `preflight.check` on the written HTML → optional `--copy`.
+
+Two ordering hazards, both commented in-code — read the comments before reordering:
+
+- **Inside `transform_obsidian_syntax()`**: strip comments → normalize footnotes → embeds →
+  wikilinks → em dashes. Comment stripping must be first, or a footnote label appearing
+  only inside a comment licenses a definition that should not survive, and embeds inside a
+  comment become real `<img>` tags. Footnote normalization must precede em-dash conversion,
+  which destroys the ` -- ` separator the footnote pattern keys on.
+- **Across `convert.py`**: raster copying and table extraction run *before*
+  `transform_obsidian_syntax`, so an embed or table inside a comment still rasterizes to
+  disk. It never reaches the pasted HTML, but it leaves orphan files. Accepted and recorded.
+
+**Preflight is advisory, never corrective.** `preflight.check(html, base_dir)` returns
+`Warning_(check, requirement, message)` and changes nothing — it is the other half of every
+narrow transformation. Current checks: `duplicate_title`, `footnote_marker_literal`,
+`footnote_section_missing`, `image_too_large`, `image_too_wide`, `missing_image`,
+`obsidian_comment`, `slug_title`, `table_placeholder`, `unreadable_image`.
+
+`tests/fixtures/torture_test/` is one synthetic article carrying every construct that has
+ever broken. Adding to it is the cheapest end-to-end guard available.
 <!-- GSD:architecture-end -->
 
 <!-- GSD:skills-start source:skills/ -->
