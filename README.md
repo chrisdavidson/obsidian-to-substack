@@ -58,6 +58,14 @@ Each warning cites the requirement it came from. Every check exists because
 that construct broke a real post once; see
 [docs/FINDINGS.md](docs/FINDINGS.md).
 
+The same run also checks the reverse direction: that nothing you wrote went
+*missing*. Every word of the source has to arrive in the output or be
+attributable to a reason the converter can name — frontmatter, the title it
+stripped, a table it turned into an image, a `%%comment%%` it removed. Anything
+else is reported as a fidelity warning. Text that vanishes is the one failure
+this tool cannot leave you to catch by reading the post, because unlike a
+leaked marker it leaves nothing behind to notice.
+
 A typical run — convert one article and put it on the clipboard:
 
 ```bash

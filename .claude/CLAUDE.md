@@ -165,13 +165,20 @@ Two ordering hazards, both commented in-code — read the comments before reorde
   `transform_obsidian_syntax`, so an embed or table inside a comment still rasterizes to
   disk. It never reaches the pasted HTML, but it leaves orphan files. Accepted and recorded.
 
-**Preflight is advisory, never corrective.** `preflight.check(html, base_dir)` returns
+**Preflight is advisory, never corrective.** `preflight.check(html, base_dir, *,
+title_from_slug, source_markdown, resolved_title, tables)` returns
 `Warning_(check, requirement, message)` and changes nothing — it is the other half of every
-narrow transformation. Current checks: `duplicate_title`, `footnote_marker_literal`,
-`footnote_section_missing`, `image_too_large`, `image_too_wide`, `missing_image`,
-`obsidian_comment`, `slug_title`, `table_placeholder`, `unreadable_image`.
+narrow transformation. Everything after `base_dir` is keyword-only and defaulted, so the
+two-positional-arg shape still works. Current checks: `duplicate_title`, `fidelity_loss`,
+`footnote_marker_literal`, `footnote_section_missing`, `image_too_large`, `image_too_wide`,
+`missing_image`, `obsidian_comment`, `slug_title`, `table_placeholder`, `unreadable_image`.
 
-**`fidelity.py` is the other axis, and it is not part of the pipeline.** Preflight asks
+`fidelity_loss` is gated on `source_markdown` — omit it and the check is inert, because
+without the source there is nothing to compare and reporting that the whole document
+vanished would be worse than reporting nothing. It emits **one warning per document**, not
+one per lost run: the corpus sweep's first pass had 18 of 20 findings sharing a root cause.
+
+**`fidelity.py` is the other axis.** Preflight asks
 whether the output is valid; `fidelity.compare(source_md, html, ...)` asks whether the
 output still contains what the author wrote. It is an accounting ledger — every removed run
 must be attributable to a named reason whose evidence is held in hand (frontmatter, the
@@ -192,6 +199,12 @@ The two checks are complementary and neither replaces the other — **preflight 
 leaked, fidelity catches what vanished.** With an odd marker count the stripper fails closed
 and strips nothing, so a comment leaks (loudly, into preflight) while fidelity correctly
 reports clean.
+
+It runs on every conversion, via `preflight`'s `fidelity_loss` check —
+`convert_article` hands it the **raw file text** (not `body`, which by then has been through
+frontmatter splitting and image rewriting, so comparing against it would exempt whatever
+those stages dropped) plus the table rows captured before `replace_tables_with_images`
+consumed them.
 
 `tools/fidelity_sweep` runs it across the corpus. Baseline 2026-08-09: **46/46 clean, 0
 unaccounted removals, 93.8% word coverage.** Always quote the coverage beside the zero —
