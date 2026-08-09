@@ -5,6 +5,7 @@ from obsidian_to_substack.obsidian_syntax import (
     normalize_footnote_definitions,
     replace_image_embeds,
     replace_internal_links,
+    strip_obsidian_comments,
     transform_obsidian_syntax,
 )
 
@@ -107,6 +108,33 @@ class TestTransformObsidianSyntax:
         result = transform_obsidian_syntax(text)
         assert "[^1]: The footnote content" in result
 
+    def test_comment_stripping_runs_before_image_embed_replacement(self):
+        # Proves strip_obsidian_comments is the first call: an embed written
+        # inside a comment must never become markup, because the comment is
+        # gone before replace_image_embeds ever sees it.
+        text = "%%\n![[diagram.png]]\n%%\n\nAfter."
+        result = transform_obsidian_syntax(text)
+        assert "<img" not in result
+        assert "diagram.png" not in result
+        assert "After." in result
+
+    def test_comment_stripping_runs_before_footnote_collection(self):
+        # A footnote label referenced ONLY inside a comment must not license
+        # its definition. After the comment is stripped the label is
+        # unreferenced, so normalize_footnote_definitions correctly leaves
+        # "[^1] - text" as literal text. That literal then legitimately
+        # trips _check_footnotes' GRD-02 warning downstream -- it is not a
+        # regression, it is the unbalanced/no-longer-referenced case working
+        # as designed.
+        text = (
+            "%%\nSee [^1] for context.\n%%\n\n"
+            "[^1] - The footnote content"
+        )
+        result = transform_obsidian_syntax(text)
+        assert "context" not in result
+        assert "[^1] - The footnote content" in result
+        assert "[^1]: The footnote content" not in result
+
 
 class TestNormalizeFootnoteDefinitions:
     def test_hyphen_form_becomes_colon_form_when_referenced(self):
@@ -165,4 +193,143 @@ class TestNormalizeFootnoteDefinitions:
         original = "Text with note[^1].\n\n[^1] - definition"
         text_copy = original
         normalize_footnote_definitions(text_copy)
+        assert text_copy == original
+
+
+class TestStripObsidianComments:
+    """Strip Obsidian %%comment%% content -- the two shapes seen in real
+    output: a same-line inline pair, and a block delimited by a marker
+    alone on its own line at each end. Synthetic fixtures only.
+    """
+
+    # --- Block shape ---
+
+    def test_block_form_removes_marker_and_body_lines(self):
+        text = "Para one.\n\n%%\nbody line\n%%\n\nPara two."
+        result = strip_obsidian_comments(text)
+        assert result == "Para one.\n\n\nPara two."
+        assert "body line" not in result
+
+    def test_block_form_body_with_blank_lines_removed_in_full(self):
+        # The seven-paragraph case from F2: a block whose body itself
+        # contains blank lines is still removed in its entirety.
+        text = "Before.\n\n%%\nline1\n\nline2\n%%\n\nAfter."
+        result = strip_obsidian_comments(text)
+        assert result == "Before.\n\n\nAfter."
+        assert "line1" not in result
+        assert "line2" not in result
+
+    def test_two_separate_balanced_blocks_both_removed(self):
+        text = "A.\n\n%%\nc1\n%%\n\nB.\n\n%%\nc2\n%%\n\nC."
+        result = strip_obsidian_comments(text)
+        assert result == "A.\n\n\nB.\n\n\nC."
+        assert "c1" not in result
+        assert "c2" not in result
+
+    def test_block_prose_block_prose_between_survives(self):
+        # Pairing is positional -- first marker with second, third with
+        # fourth. A naive "first marker to last marker" span would swallow
+        # the prose between the two blocks; this test is what stops that.
+        text = "%%\nc1\n%%\n\nProse between.\n\n%%\nc2\n%%"
+        result = strip_obsidian_comments(text)
+        assert result == "\nProse between.\n"
+        assert "c1" not in result
+        assert "c2" not in result
+
+    # --- Inline shape ---
+
+    def test_inline_comment_mid_sentence_leaves_one_space_at_seam(self):
+        text = "Text %% note %% more"
+        result = strip_obsidian_comments(text)
+        assert result == "Text more"
+
+    def test_inline_comment_at_start_of_line(self):
+        text = "%% note %% Text"
+        result = strip_obsidian_comments(text)
+        assert result == "Text"
+
+    def test_inline_comment_at_end_of_line_leaves_no_trailing_space(self):
+        text = "Text %% note %%"
+        result = strip_obsidian_comments(text)
+        assert result == "Text"
+
+    def test_inline_comment_does_not_leave_indented_code_block(self):
+        # Critically NOT four leading spaces, which python-markdown would
+        # render as an indented code block.
+        text = "%% note %%    Text"
+        result = strip_obsidian_comments(text)
+        assert result == "Text"
+
+    def test_inline_comment_preserves_list_indentation(self):
+        text = "  - item %% note %% rest"
+        result = strip_obsidian_comments(text)
+        assert result == "  - item rest"
+
+    def test_comment_only_line_is_dropped_not_blanked(self):
+        # The outer lines are one lazy-continuation paragraph; leaving a
+        # blank line in place of the comment-only line would split them
+        # into two paragraphs.
+        text = "Line one\n%% aside %%\nline three"
+        result = strip_obsidian_comments(text)
+        assert result == "Line one\nline three"
+
+    def test_two_inline_comments_on_one_line_both_removed(self):
+        text = "A %% one %% B %% two %% C"
+        result = strip_obsidian_comments(text)
+        assert result == "A B C"
+
+    # --- Exemptions: returned byte-identical ---
+
+    def test_comment_shaped_line_inside_fence_is_untouched(self):
+        text = "```\n%% not a comment %%\n```"
+        result = strip_obsidian_comments(text)
+        assert result == text
+
+    def test_comment_shaped_span_inside_inline_code_is_untouched(self):
+        text = "Use `%% note %%` for asides."
+        result = strip_obsidian_comments(text)
+        assert result == text
+
+    def test_fenced_block_of_a_lone_marker_line_is_not_a_block_delimiter(self):
+        text = "```\n%%\n```"
+        result = strip_obsidian_comments(text)
+        assert result == text
+
+    # --- Fail-safe: never delete to end of document ---
+
+    def test_odd_number_of_markers_leaves_unmatched_tail_verbatim(self):
+        # The balanced pair before the unmatched marker is removed; the
+        # unmatched marker and everything after it survive verbatim.
+        text = (
+            "Before.\n\n%%\nblock1\n%%\n\n"
+            "%%\nafter this marker everything survives"
+        )
+        result = strip_obsidian_comments(text)
+        assert result == (
+            "Before.\n\n\n%%\nafter this marker everything survives"
+        )
+        assert "block1" not in result
+
+    def test_inline_line_with_single_unmatched_marker_is_unchanged(self):
+        text = "Some text %% unmatched"
+        result = strip_obsidian_comments(text)
+        assert result == text
+
+    # --- Contract ---
+
+    def test_text_with_no_marker_is_returned_identical(self):
+        text = "Plain text.\n\nAnother paragraph."
+        result = strip_obsidian_comments(text)
+        assert result == text
+
+    def test_idempotent(self):
+        text = "Intro %% note %% continues.\n\n%%\nBlock body.\n%%\n\nOutro."
+        once = strip_obsidian_comments(text)
+        twice = strip_obsidian_comments(once)
+        assert twice == once
+
+    def test_pure_function_no_mutation(self):
+        original = "Intro %% note %% continues."
+        text_copy = original
+        strip_obsidian_comments(text_copy)
         assert text_copy == original
