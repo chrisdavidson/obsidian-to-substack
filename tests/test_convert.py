@@ -2,6 +2,7 @@
 
 import json
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -448,3 +449,119 @@ class TestFidelityWiring:
         result = convert_article(str(source), str(tmp_path / "out"))
 
         assert not [w for w in result["warnings"] if w.check == "fidelity_loss"]
+
+
+class TestSvgDirResolution:
+    """convert_article must prefer the per-article svg/<slug>/ directory.
+
+    The vault moved to per-article subdirectories, drafts/svg/<slug>/*.svg.
+    The parent svg/ still exists, so the is_dir() guard that defaults svg_dir
+    still passes, but export_all_svgs globs *.svg non-recursively and finds
+    nothing directly inside svg/ -- image_map comes back empty while
+    replace_image_embeds still swaps the .svg extension for .png
+    unconditionally, so the written HTML carries <img> tags for files nobody
+    generated (DIAG-02; six such warnings on the real article that surfaced
+    this).
+    """
+
+    def _write_article(self, tmp_path: Path, body: str) -> str:
+        source = tmp_path / "my-article.md"
+        source.write_text(body, encoding="utf-8")
+        return str(source)
+
+    def test_nested_slug_directory_is_preferred_over_flat_svg_dir(self, tmp_path):
+        # Pins the fix itself: with no --svg-dir passed at all, svg/<slug>/
+        # must win over the flat svg/ it lives inside of.
+        svg_subdir = tmp_path / "svg" / "my-article"
+        svg_subdir.mkdir(parents=True)
+        shutil.copy(
+            FIXTURES_DIR / "sample-diagram.svg", svg_subdir / "sample-diagram.svg"
+        )
+
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[sample-diagram.svg]]\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"))
+
+        output_dir = tmp_path / "out" / "my-article"
+        assert (output_dir / "sample-diagram.png").exists()
+        # The warning assertion is the primary one -- the bogus <img> tag is
+        # the user-visible defect, and the PNG's existence is only a proxy.
+        assert not [w for w in result["warnings"] if w.check == "missing_image"]
+
+    def test_flat_svg_directory_still_works_when_no_nested_directory_exists(
+        self, tmp_path
+    ):
+        # Guards the fallback: today's flat layout -- svg/*.svg with no
+        # per-slug subdirectory -- must keep converting exactly as it does now.
+        svg_dir = tmp_path / "svg"
+        svg_dir.mkdir()
+        shutil.copy(FIXTURES_DIR / "sample-diagram.svg", svg_dir / "sample-diagram.svg")
+
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[sample-diagram.svg]]\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"))
+
+        output_dir = tmp_path / "out" / "my-article"
+        assert (output_dir / "sample-diagram.png").exists()
+        assert not [w for w in result["warnings"] if w.check == "missing_image"]
+
+    def test_explicit_svg_dir_is_not_second_guessed(self, tmp_path):
+        # Guards against over-reach: an explicitly passed svg_dir is the
+        # author's override. It must never be probed for a per-slug sibling,
+        # even when one exists and would resolve a same-named embed to a
+        # different file.
+        explicit_dir = tmp_path / "explicit"
+        explicit_dir.mkdir()
+        shutil.copy(
+            FIXTURES_DIR / "sample-diagram.svg", explicit_dir / "sample-diagram.svg"
+        )
+
+        decoy_dir = tmp_path / "svg" / "my-article"
+        decoy_dir.mkdir(parents=True)
+        shutil.copy(
+            FIXTURES_DIR / "sample-diagram.svg", decoy_dir / "decoy-diagram.svg"
+        )
+
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[sample-diagram.svg]]\n\nBody.\n"
+        )
+        result = convert_article(
+            article, str(tmp_path / "out"), svg_dir=str(explicit_dir)
+        )
+
+        output_dir = tmp_path / "out" / "my-article"
+        assert (output_dir / "sample-diagram.png").exists()
+        assert not (output_dir / "decoy-diagram.png").exists()
+
+    def test_flat_raster_embed_is_still_found_when_nested_slug_dir_wins(
+        self, tmp_path
+    ):
+        # The fix moves the resolved svg_dir into search_dirs at
+        # convert.py:116. A fix that only swapped the directory -- instead of
+        # keeping the flat svg/ in search_dirs too -- would stop searching
+        # the flat layout for raster embeds, reintroducing the same
+        # broken-<img src> defect from the other side.
+        from PIL import Image
+
+        svg_subdir = tmp_path / "svg" / "my-article"
+        svg_subdir.mkdir(parents=True)
+        shutil.copy(
+            FIXTURES_DIR / "sample-diagram.svg", svg_subdir / "sample-diagram.svg"
+        )
+
+        svg_flat = tmp_path / "svg"
+        img = Image.new("RGB", (10, 10))
+        img.save(svg_flat / "photo.png")
+
+        article = self._write_article(
+            tmp_path,
+            "# My Article\n\n![[sample-diagram.svg]]\n\n![[photo.png]]\n\nBody.\n",
+        )
+        result = convert_article(article, str(tmp_path / "out"))
+
+        output_dir = tmp_path / "out" / "my-article"
+        assert (output_dir / "sample-diagram.png").exists()
+        assert (output_dir / "photo.png").exists()
+        assert not [w for w in result["warnings"] if w.check == "missing_image"]
