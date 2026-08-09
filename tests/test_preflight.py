@@ -145,6 +145,60 @@ class TestFootnoteChecks:
         assert warnings == []
 
 
+class TestObsidianCommentCheck:
+    """GRD-02 check for a surviving Obsidian %%comment%% marker.
+
+    strip_obsidian_comments (obsidian_syntax.py) is deliberately narrow --
+    only a same-line pair and a lone-marker-line block are handled. This
+    check exists precisely because of that narrowness: an unhandled or
+    unbalanced marker is meant to reach here and be reported rather than be
+    silently guessed at. The two skips below (code/pre content, HTML
+    comment nodes) mirror _check_footnotes' skips for the same reason --
+    documentation of the syntax is not a failure, and HTML comments are
+    already _check_placeholder_comments' territory -- so do not remove them.
+    """
+
+    def _real_stripped_html(self, text):
+        from obsidian_to_substack.obsidian_syntax import transform_obsidian_syntax
+
+        body = transform_obsidian_syntax(text)
+        rendered = render_to_html(body)
+        return strip_unsupported_elements(rendered)
+
+    def test_warns_on_surviving_marker_in_visible_text(self, tmp_path):
+        html = "<body><p>Text %% unbalanced note.</p></body>"
+        assert any(w.check == "obsidian_comment" for w in check(html, tmp_path))
+
+    def test_surviving_marker_warning_cites_grd_02(self, tmp_path):
+        html = "<body><p>Text %% unbalanced note.</p></body>"
+        warnings = [w for w in check(html, tmp_path) if w.check == "obsidian_comment"]
+        assert warnings[0].requirement == "GRD-02"
+
+    def test_clean_output_after_stripping_produces_no_warning(self, tmp_path):
+        # The normal case after Task 1: the comment stripped cleanly, so
+        # this check is silent.
+        html = self._real_stripped_html("Text %% aside %% more.")
+        warnings = [w for w in check(html, tmp_path) if w.check == "obsidian_comment"]
+        assert warnings == []
+
+    def test_marker_inside_code_does_not_warn(self, tmp_path):
+        html = "<body><pre><code>%% example syntax %%</code></pre></body>"
+        warnings = [w for w in check(html, tmp_path) if w.check == "obsidian_comment"]
+        assert warnings == []
+
+    def test_marker_inside_html_comment_does_not_warn(self, tmp_path):
+        # Invisible in the composer, and already _check_placeholder_comments'
+        # territory.
+        html = "<body><!-- %% leftover %% --><p>x</p></body>"
+        warnings = [w for w in check(html, tmp_path) if w.check == "obsidian_comment"]
+        assert warnings == []
+
+    def test_several_markers_in_one_text_node_produce_one_warning(self, tmp_path):
+        html = "<body><p>%% one %% and %% two %% and %% three %%</p></body>"
+        warnings = [w for w in check(html, tmp_path) if w.check == "obsidian_comment"]
+        assert len(warnings) == 1
+
+
 class TestSlugTitleCheck:
     """The title fell back to the filename AND the filename is a slug (GRD-02).
 
