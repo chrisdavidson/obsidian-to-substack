@@ -208,10 +208,9 @@ class TestWindowsBackend:
         seen: dict[str, str] = {}
 
         def capture(argv, **kwargs):
-            command = argv[-1]
-            path = command.split("ReadAllText('")[1].split("'")[0]
+            path = kwargs["env"]["OTS_CLIPBOARD_PAYLOAD"]
             seen["payload"] = Path(path).read_text(encoding="ascii")
-            seen["command"] = command
+            seen["command"] = argv[-1]
             return None
 
         with (
@@ -229,7 +228,7 @@ class TestWindowsBackend:
         captured: dict[str, str] = {}
 
         def capture(argv, **kwargs):
-            captured["path"] = argv[-1].split("ReadAllText('")[1].split("'")[0]
+            captured["path"] = kwargs["env"]["OTS_CLIPBOARD_PAYLOAD"]
             return None
 
         with (

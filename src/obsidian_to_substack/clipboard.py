@@ -398,9 +398,16 @@ def _copy_html_windows(html_content: str) -> None:
         with os.fdopen(handle, "wb") as payload_file:
             payload_file.write(payload.encode("ascii"))
 
+        # The path travels in the environment, never spliced into the command.
+        # A PowerShell single-quoted string ends at the first quote inside it,
+        # and a Windows temp path runs through the user's profile directory --
+        # `C:\Users\O'Brien\AppData\Local\Temp\...` is an ordinary name. Escaping
+        # by doubling the quote would work and would also be one careful step
+        # away from breaking, on the one platform where nobody is watching.
         command = (
             "Add-Type -AssemblyName System.Windows.Forms; "
-            f"$html = [IO.File]::ReadAllText('{path}', [Text.Encoding]::UTF8); "
+            "$html = [IO.File]::ReadAllText("
+            "$env:OTS_CLIPBOARD_PAYLOAD, [Text.Encoding]::UTF8); "
             "[System.Windows.Forms.Clipboard]::SetText("
             "$html, [System.Windows.Forms.TextDataFormat]::Html)"
         )
@@ -411,6 +418,7 @@ def _copy_html_windows(html_content: str) -> None:
                 check=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
+                env={**os.environ, "OTS_CLIPBOARD_PAYLOAD": path},
             )
         except subprocess.CalledProcessError as exc:
             detail = (exc.stderr or b"").decode("utf-8", "replace").strip()
