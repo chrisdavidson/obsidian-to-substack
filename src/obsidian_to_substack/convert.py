@@ -500,7 +500,10 @@ def main() -> None:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show what would be done without writing files",
+        help=(
+            "Show what would be done without writing files, including "
+            "which embedded image references will not resolve"
+        ),
     )
     parser.add_argument(
         "-v", "--verbose",

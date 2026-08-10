@@ -86,6 +86,15 @@ article. If middle-click paste is disabled in your browser, the title is also
 printed on the `Title:` line — but paste the body first, or selecting that text
 will replace the clipboard.
 
+If the preflight check above found anything to warn about, `--copy` refuses to
+write to either selection: it exits non-zero and prints the warning count with
+instructions to re-run with `--force`, which copies anyway. This closes off
+the failure mode that put a private `%%comment%%` into a live published post —
+the warning printed, and the copy happened regardless. `--force` exists
+because not every warning is a reason to stop: `slug_title` in particular is
+noise-controlled against the published corpus and still fires on a few
+legitimate titles.
+
 ### Options
 
 | Flag | Default | Description |
@@ -94,9 +103,10 @@ will replace the clipboard.
 | `--file` | — | Process a single `.md` file instead of the whole directory |
 | `--svg-dir` | `<directory>/svg/<slug>/` if it exists, else `<directory>/svg/` | Override the SVG source directory |
 | `--dpi` | `192` | PNG export resolution |
-| `--copy` | off | Body HTML to the clipboard, title to the primary selection (requires `xclip`) |
+| `--copy` | off | Body HTML to the clipboard, title to the primary selection (requires `xclip`). Refuses (exit 1, writes nothing) if preflight found a warning on the article — see `--force` |
+| `--force` | off | Copy anyway when preflight warned; only meaningful with `--copy` |
 | `--open` | off | Open the result in your browser |
-| `--dry-run` | off | Report what would happen without writing anything |
+| `--dry-run` | off | Report what would happen without writing anything, including which embedded image references will not resolve and will paste broken |
 | `-v`, `--verbose` | off | Verbose logging |
 
 ### Tables
