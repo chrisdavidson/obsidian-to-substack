@@ -5,6 +5,51 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`--copy` works on macOS and Windows.** It was Linux/X11 only; each platform
+  now gets its native tool — `xclip`, `osascript`, and PowerShell respectively.
+  The Linux path is unchanged, including the file-descriptor handling that
+  stops a piped run from stalling.
+
+  On macOS the article goes to the HTML clipboard flavour via `osascript`, with
+  the script on stdin: a real article is 100kB of inlined base64 and its hex
+  encoding is 205kB, past the per-argument limit.
+
+  On Windows the CF_HTML payload is built here rather than by
+  `Set-Clipboard -AsHtml`, which corrupts non-ASCII text and is closed
+  **won't-fix** upstream. That is not an edge case for this pipeline: it
+  converts ` -- ` into a real em dash and runs `smarty`, so a corpus article
+  with no non-ASCII does not exist. CF_HTML offsets are byte counts, which is
+  the arithmetic the upstream bug gets wrong, so the fragment is escaped to
+  ASCII numeric references first — with a pure-ASCII payload, byte offsets and
+  character offsets cannot diverge at all.
+
+### Changed
+
+- **The title hand-off is Linux-only, by design.** It relies on X11 having two
+  independent selections. macOS and Windows have one clipboard and it holds the
+  body, so writing the title there would destroy the article just placed. Those
+  platforms print the title for you to copy by hand instead.
+
+### Not verified
+
+Stated here rather than buried, because it is the honest state of this release:
+**the macOS and Windows clipboard paths have never been run on their target
+platforms.** There is no such machine on the author's side. This is the
+project's verification split taken a step further — Substack's rendering needs a
+human to paste and report, and the author can be that human, but for these two
+backends there is nobody at all.
+
+What *is* verified is that the right bytes reach the right tool: the payloads
+are checked byte for byte against a real converted article, including that the
+macOS hex round-trips exactly and that the CF_HTML offsets land on the fragment.
+That is not the same as a clipboard being written, and it is not claimed to be.
+
+402 tests pass, up from 368.
+
 ## [1.2.0] — 2026-08-10
 
 A run that knows its output is broken can no longer end by reporting success.
