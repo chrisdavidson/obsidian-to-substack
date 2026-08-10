@@ -241,6 +241,33 @@ class TestWindowsBackend:
 
         assert not Path(captured["path"]).exists()
 
+    def test_the_temp_path_is_not_interpolated_into_the_command(self):
+        # A path spliced into a PowerShell single-quoted string is terminated
+        # by any quote inside it, and a Windows temp path runs through the
+        # user's profile directory — `C:\Users\O'Brien\AppData\...` is an
+        # ordinary name. That failure would happen only on the platform with
+        # nobody to notice it, so the path is handed over out of band instead
+        # of escaped. Structurally impossible beats carefully quoted.
+        seen: dict[str, str] = {}
+
+        def capture(argv, **kwargs):
+            seen["command"] = argv[-1]
+            seen["env"] = kwargs.get("env") or {}
+            return None
+
+        with (
+            patch("sys.platform", "win32"),
+            patch("shutil.which", side_effect=lambda name: f"C:\\{name}"),
+            patch("subprocess.run", side_effect=capture),
+        ):
+            copy_html("<p>hello</p>")
+
+        assert "'" not in seen["command"].split("ReadAllText")[1][:40]
+        assert any(
+            "Temp" in str(value) or "tmp" in str(value)
+            for value in seen["env"].values()
+        ), "the payload path must reach PowerShell out of band"
+
     def test_the_article_never_reaches_the_command_line(self):
         # Same argument-length reason as macOS: a real article with inlined
         # images is far past any command-length limit.
