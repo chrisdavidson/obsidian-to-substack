@@ -60,7 +60,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Sequence
+from types import MappingProxyType
+from typing import Mapping, Sequence
 
 from bs4 import BeautifulSoup
 
@@ -121,7 +122,7 @@ _ORDERED_MARKER = re.compile(r"^\s*(?P<marker>\d+)[.)]\s")
 #
 # Position alone never excuses a removal -- see _attribute -- so this pattern
 # only narrows where to look, exactly as _TABLE_LINE does.
-_FOOTNOTE_DEFINITION = re.compile(r"^\s{0,3}\[\^[^\]]+\]\s*(?::|-)\s")
+_FOOTNOTE_DEFINITION = re.compile(r"^\s{0,3}\[\^(?P<label>[^\]]+)\]\s*(?::|-)\s")
 
 # A definition continues onto following indented lines. They are part of the
 # same relocated block and move with it.
@@ -416,7 +417,7 @@ def compare(
         source_markdown, resolved_title=resolved_title, tables=tables
     )
     table_lines = _table_lines(source_markdown)
-    definition_lines = footnote_definition_lines(source_markdown)
+    definition_owners = footnote_definition_labels(source_markdown)
     definition_words = _footnote_words(output_html)
     table_words = {
         word.casefold()
@@ -450,7 +451,7 @@ def compare(
             spans,
             table_lines,
             table_words,
-            definition_lines,
+            definition_owners,
             definition_words,
         )
         if reason is None:
@@ -493,8 +494,8 @@ def _attribute(
     spans: Sequence[Span],
     table_lines: frozenset[int],
     table_words: frozenset[str] | set[str],
-    definition_lines: frozenset[int] = frozenset(),
-    definition_words: frozenset[str] | set[str] = frozenset(),
+    definition_owners: Mapping[int, str] = MappingProxyType({}),
+    definition_words: Mapping[str, frozenset[str]] = MappingProxyType({}),
 ) -> str | None:
     """Name the reason this token may be missing, or None if there is none."""
     for span in spans:
@@ -518,8 +519,13 @@ def _attribute(
     # renderer genuinely dropped sits in exactly the same place -- the loss this
     # module exists to catch would become invisible. Withholding is only ever
     # earned by evidence the words arrived, which here is their presence in the
-    # rendered `fn:` list items.
-    if token.line in definition_lines and token.word.casefold() in definition_words:
+    # rendered `fn:` list item CARRYING THIS DEFINITION'S OWN LABEL. One pooled
+    # set across all footnotes would let a sibling sharing the same vocabulary
+    # vouch for a body that was dropped outright.
+    owner = definition_owners.get(token.line)
+    if owner is not None and token.word.casefold() in definition_words.get(
+        owner, frozenset()
+    ):
         return "footnote_definition"
 
     return None
@@ -569,8 +575,8 @@ def _table_lines(source: str) -> frozenset[int]:
     )
 
 
-def footnote_definition_lines(source: str) -> frozenset[int]:
-    """1-based line numbers inside a footnote definition, matching Token.line.
+def footnote_definition_labels(source: str) -> dict[int, str]:
+    """1-based line number -> the footnote label whose definition owns it.
 
     A definition runs from its `[^label]:` line through any indented
     continuation lines beneath it, and ends at the first line that is neither.
@@ -578,33 +584,39 @@ def footnote_definition_lines(source: str) -> frozenset[int]:
     legal -- but a blank line followed by unindented prose does, because that
     prose is back in the body.
 
+    The label rides along rather than being discarded because reconciliation is
+    per-footnote: pooling every definition's words into one set would let a
+    sibling that happens to share vocabulary vouch for a body that was dropped
+    outright.
+
     Fenced code is skipped for the same reason every other check skips it: an
     article that *documents* footnote syntax is correct output, and the words
     inside the fence stay in the body where they were written.
 
-    Pure: returns a new frozenset, never mutates the input.
+    Pure: returns a new dict, never mutates the input.
     """
-    lines: set[int] = set()
-    in_definition = False
+    owners: dict[int, str] = {}
+    label: str | None = None
     in_fence = False
     pending_blank: list[int] = []
 
     for index, line in enumerate(source.split("\n"), start=1):
         if _is_fence(line):
             in_fence = not in_fence
-            in_definition = False
+            label = None
             pending_blank.clear()
             continue
         if in_fence:
             continue
 
-        if _FOOTNOTE_DEFINITION.match(line):
-            in_definition = True
+        definition = _FOOTNOTE_DEFINITION.match(line)
+        if definition is not None:
+            label = definition.group("label")
             pending_blank.clear()
-            lines.add(index)
+            owners[index] = label
             continue
 
-        if not in_definition:
+        if label is None:
             continue
 
         if not line.strip():
@@ -616,33 +628,48 @@ def footnote_definition_lines(source: str) -> frozenset[int]:
             continue
 
         if _FOOTNOTE_CONTINUATION.match(line):
-            lines.update(pending_blank)
+            for blank in pending_blank:
+                owners[blank] = label
             pending_blank.clear()
-            lines.add(index)
+            owners[index] = label
             continue
 
-        in_definition = False
+        label = None
         pending_blank.clear()
 
-    return frozenset(lines)
+    return owners
 
 
-def _footnote_words(html: str) -> frozenset[str]:
-    """Casefolded words that reached the rendered footnote list.
+def footnote_definition_lines(source: str) -> frozenset[int]:
+    """The line numbers of `footnote_definition_labels`, without the labels."""
+    return frozenset(footnote_definition_labels(source))
+
+
+def _footnote_words(html: str) -> dict[str, frozenset[str]]:
+    """Casefolded words that reached each rendered footnote, keyed by label.
 
     Keyed on `id="fn:..."` rather than the extension's `<div class="footnote">`
     wrapper, because `strip_unsupported_elements` removes `div` -- by the time
     the written article.html reaches this module the wrapper is gone and the
-    list item ids are the only thing left that names the subtree.
+    list item ids are the only thing left that names the subtree. The label
+    itself survives the id verbatim, including spaces and non-ASCII, so it can
+    be matched straight back against the source definition.
+
+    A label absent from this mapping has no words to vouch for it, so its whole
+    definition is reported -- which is the correct answer for a footnote the
+    renderer dropped.
     """
     soup = BeautifulSoup(html, "html.parser")
-    words: set[str] = set()
+    by_label: dict[str, frozenset[str]] = {}
     for item in soup.find_all("li", id=True):
-        if str(item.get("id", "")).startswith("fn:"):
-            words.update(
-                word.casefold() for word in WORD_PATTERN.findall(item.get_text(" "))
-            )
-    return frozenset(words)
+        item_id = str(item.get("id", ""))
+        if not item_id.startswith("fn:"):
+            continue
+        label = item_id[len("fn:"):]
+        by_label[label] = frozenset(
+            word.casefold() for word in WORD_PATTERN.findall(item.get_text(" "))
+        )
+    return by_label
 
 
 def _leading_title_span(source: str, resolved_title: str) -> tuple[int, int] | None:
