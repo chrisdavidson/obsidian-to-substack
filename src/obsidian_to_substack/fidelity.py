@@ -112,6 +112,21 @@ _FENCE_INFO = re.compile(r"^\s*(?:```|~~~)\s*(?P<info>\S+.*?)\s*$")
 # invisible to WORD_PATTERN already.
 _ORDERED_MARKER = re.compile(r"^\s*(?P<marker>\d+)[.)]\s")
 
+# A footnote definition line, in both shapes the corpus writes: the canonical
+# `[^1]: body` and Obsidian's `[^1] - body`, which the pipeline normalizes into
+# the first. Re-derived here rather than imported from
+# normalize_footnote_definitions, for the reason the module docstring gives at
+# length: a comparator that asks a transform what it did cannot see the
+# transform being wrong.
+#
+# Position alone never excuses a removal -- see _attribute -- so this pattern
+# only narrows where to look, exactly as _TABLE_LINE does.
+_FOOTNOTE_DEFINITION = re.compile(r"^\s{0,3}\[\^[^\]]+\]\s*(?::|-)\s")
+
+# A definition continues onto following indented lines. They are part of the
+# same relocated block and move with it.
+_FOOTNOTE_CONTINUATION = re.compile(r"^(?:\t| {4,})\S")
+
 _FRONTMATTER = re.compile(r"\A---\r?\n.*?\r?\n---[ \t]*\r?\n", re.DOTALL)
 _IMAGE_EMBED = re.compile(r"!\[\[[^\]]*\]\]")
 _LINK_TARGET = re.compile(r"\]\(([^)]*)\)")
@@ -401,6 +416,8 @@ def compare(
         source_markdown, resolved_title=resolved_title, tables=tables
     )
     table_lines = _table_lines(source_markdown)
+    definition_lines = footnote_definition_lines(source_markdown)
+    definition_words = _footnote_words(output_html)
     table_words = {
         word.casefold()
         for table in tables
@@ -428,7 +445,14 @@ def compare(
     comparable: list[Token] = []
     reasons: set[str] = set()
     for token in source_tokens:
-        reason = _attribute(token, spans, table_lines, table_words)
+        reason = _attribute(
+            token,
+            spans,
+            table_lines,
+            table_words,
+            definition_lines,
+            definition_words,
+        )
         if reason is None:
             comparable.append(token)
         else:
@@ -469,6 +493,8 @@ def _attribute(
     spans: Sequence[Span],
     table_lines: frozenset[int],
     table_words: frozenset[str] | set[str],
+    definition_lines: frozenset[int] = frozenset(),
+    definition_words: frozenset[str] | set[str] = frozenset(),
 ) -> str | None:
     """Name the reason this token may be missing, or None if there is none."""
     for span in spans:
@@ -480,6 +506,21 @@ def _attribute(
     # sits on a table line too, and must still be reported.
     if token.line in table_lines and token.word.casefold() in table_words:
         return "table"
+
+    # Also relocated, not vanished, and reconciled for the same reason. Markdown
+    # moves every footnote definition to the end of the rendered document, so a
+    # definition written mid-source arrives after text that followed it and
+    # SequenceMatcher -- which can only align in order -- has no path that keeps
+    # both. One of the two runs reads as deleted.
+    #
+    # Do NOT simplify this into an authorized span in `authorized_spans`. That
+    # would excuse a definition by where it sits, and a footnote body the
+    # renderer genuinely dropped sits in exactly the same place -- the loss this
+    # module exists to catch would become invisible. Withholding is only ever
+    # earned by evidence the words arrived, which here is their presence in the
+    # rendered `fn:` list items.
+    if token.line in definition_lines and token.word.casefold() in definition_words:
+        return "footnote_definition"
 
     return None
 
@@ -526,6 +567,82 @@ def _table_lines(source: str) -> frozenset[int]:
         for index, line in enumerate(source.split("\n"), start=1)
         if _TABLE_LINE.match(line)
     )
+
+
+def footnote_definition_lines(source: str) -> frozenset[int]:
+    """1-based line numbers inside a footnote definition, matching Token.line.
+
+    A definition runs from its `[^label]:` line through any indented
+    continuation lines beneath it, and ends at the first line that is neither.
+    A blank line does not end it on its own -- a multi-paragraph footnote is
+    legal -- but a blank line followed by unindented prose does, because that
+    prose is back in the body.
+
+    Fenced code is skipped for the same reason every other check skips it: an
+    article that *documents* footnote syntax is correct output, and the words
+    inside the fence stay in the body where they were written.
+
+    Pure: returns a new frozenset, never mutates the input.
+    """
+    lines: set[int] = set()
+    in_definition = False
+    in_fence = False
+    pending_blank: list[int] = []
+
+    for index, line in enumerate(source.split("\n"), start=1):
+        if _is_fence(line):
+            in_fence = not in_fence
+            in_definition = False
+            pending_blank.clear()
+            continue
+        if in_fence:
+            continue
+
+        if _FOOTNOTE_DEFINITION.match(line):
+            in_definition = True
+            pending_blank.clear()
+            lines.add(index)
+            continue
+
+        if not in_definition:
+            continue
+
+        if not line.strip():
+            # Held, not claimed: a blank line belongs to the definition only if
+            # an indented line follows it. Claiming it immediately would let a
+            # definition at the end of a paragraph swallow the blank line and
+            # then keep going.
+            pending_blank.append(index)
+            continue
+
+        if _FOOTNOTE_CONTINUATION.match(line):
+            lines.update(pending_blank)
+            pending_blank.clear()
+            lines.add(index)
+            continue
+
+        in_definition = False
+        pending_blank.clear()
+
+    return frozenset(lines)
+
+
+def _footnote_words(html: str) -> frozenset[str]:
+    """Casefolded words that reached the rendered footnote list.
+
+    Keyed on `id="fn:..."` rather than the extension's `<div class="footnote">`
+    wrapper, because `strip_unsupported_elements` removes `div` -- by the time
+    the written article.html reaches this module the wrapper is gone and the
+    list item ids are the only thing left that names the subtree.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    words: set[str] = set()
+    for item in soup.find_all("li", id=True):
+        if str(item.get("id", "")).startswith("fn:"):
+            words.update(
+                word.casefold() for word in WORD_PATTERN.findall(item.get_text(" "))
+            )
+    return frozenset(words)
 
 
 def _leading_title_span(source: str, resolved_title: str) -> tuple[int, int] | None:

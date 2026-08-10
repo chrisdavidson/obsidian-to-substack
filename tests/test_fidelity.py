@@ -23,6 +23,7 @@ from obsidian_to_substack.fidelity import (
     authorized_spans,
     compare,
     comment_spans,
+    footnote_definition_lines,
     tokenize,
 )
 from obsidian_to_substack.obsidian_syntax import (
@@ -462,6 +463,39 @@ class TestRelocatedFootnoteDefinitions:
         assert "trailing" in lost
 
 
+class TestFootnoteDefinitionLines:
+    """Where the definition block starts and, more importantly, where it stops."""
+
+    def test_both_marker_forms_are_found(self):
+        source = "[^1]: canonical\n[^2] - obsidian\n"
+
+        assert footnote_definition_lines(source) == frozenset({1, 2})
+
+    def test_a_definition_does_not_run_into_following_prose(self):
+        # The block must end, or it would swallow the rest of the article and
+        # excuse every later loss by association.
+        source = "[^1]: the body\n\nOrdinary prose resumed here.\n"
+
+        assert footnote_definition_lines(source) == frozenset({1})
+
+    def test_a_blank_line_between_indented_parts_is_kept(self):
+        source = "[^1]: first paragraph\n\n    second paragraph\n\nBody again.\n"
+
+        assert footnote_definition_lines(source) == frozenset({1, 2, 3})
+
+    def test_fenced_code_is_skipped(self):
+        # An article that documents footnote syntax is correct output; those
+        # words stay in the body where they were written.
+        source = "```\n[^1]: not a real definition\n```\n"
+
+        assert footnote_definition_lines(source) == frozenset()
+
+    def test_a_footnote_marker_in_prose_is_not_a_definition(self):
+        source = "A sentence citing [^1] mid-line.\n"
+
+        assert footnote_definition_lines(source) == frozenset()
+
+
 class TestCoverage:
     """A clean report means nothing without knowing how much was compared."""
 
@@ -525,6 +559,7 @@ class TestPurity:
         compare(source, html)
         tokenize(source)
         comment_spans(source)
+        footnote_definition_lines(source)
         authorized_spans(source, resolved_title="", tables=())
 
         assert source == source_copy
