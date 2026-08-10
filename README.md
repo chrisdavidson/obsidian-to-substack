@@ -175,7 +175,7 @@ manage, and an external publish on every run. Full evidence is in
 ## Development
 
 ```bash
-uv run pytest                                    # 228 tests, 94% coverage
+uv run pytest                                    # 364 tests, 96% coverage
 uv run pytest --cov=src --cov-report=term-missing
 ```
 

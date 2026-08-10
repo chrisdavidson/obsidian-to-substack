@@ -117,6 +117,19 @@ HTML that must not trigger a GRD-02 warning:
 %% this literal marker documents the syntax and must survive visibly %%
 ```
 
+## A footnote defined where it was cited
+
+Obsidian's habit is to put the definition directly under the paragraph that
+cites it[^mid] rather than at the end of the file.
+
+[^mid]: Rendering moves this definition to the bottom of the document, so an
+    in-order comparison sees it and the paragraph below swap places. This
+    continuation line is indented, and belongs to the same relocated block.
+
+The paragraph after the definition is the load-bearing part of this section:
+without it there is nothing for the definition to trade places with, and the
+fixture would pass whether or not the reconciliation works.
+
 ## Closing
 
 If every construct above survived the paste with no manual repair, ACPT-01
