@@ -426,6 +426,44 @@ class TestRelocatedFootnoteDefinitions:
         lost = " ".join(removal.text for removal in report.unaccounted)
         assert "swallowed" in lost
 
+    def test_a_lost_definition_is_not_excused_by_another_footnote(self):
+        # The words have to arrive in THIS footnote, not merely somewhere in
+        # the footnote list. Pooling every definition's words into one set lets
+        # a sibling that happens to share vocabulary vouch for a body that was
+        # dropped outright — a false negative in the ledger, which is the one
+        # failure this module exists to prevent.
+        source = (
+            "Intro.[^1] More.[^2]\n"
+            "\n"
+            "[^1]: the shared body text\n"
+            "\n"
+            "[^2]: the shared body text\n"
+            "\n"
+            "Tail paragraph here.\n"
+        )
+        html = (
+            "<html><body><p>Intro. More.</p><p>Tail paragraph here.</p>"
+            '<ol><li id="fn:2"><p>the shared body text</p></li></ol></body></html>'
+        )
+
+        report = compare(source, html)
+
+        assert not report.is_clean, "a dropped footnote body vouched for by its sibling"
+
+    def test_words_missing_from_a_definition_are_still_reported(self):
+        # The partial case: the definition arrived, but not all of it.
+        source = "Intro.[^1]\n\n[^1]: the body of a much longer sentence\n"
+        html = (
+            "<html><body><p>Intro.</p>"
+            '<ol><li id="fn:1"><p>the body</p></li></ol></body></html>'
+        )
+
+        report = compare(source, html)
+
+        assert not report.is_clean
+        lost = " ".join(removal.text for removal in report.unaccounted)
+        assert "longer sentence" in lost
+
     def test_an_end_of_document_definition_still_reports_clean(self):
         # The case that already worked. It has to keep working.
         source = (
@@ -482,6 +520,18 @@ class TestFootnoteDefinitionLines:
         source = "[^1]: first paragraph\n\n    second paragraph\n\nBody again.\n"
 
         assert footnote_definition_lines(source) == frozenset({1, 2, 3})
+
+    def test_several_blank_lines_before_a_continuation_are_kept(self):
+        source = "[^1]: first\n\n\n    second\n\nBody again.\n"
+
+        assert footnote_definition_lines(source) == frozenset({1, 2, 3, 4})
+
+    def test_trailing_blank_lines_at_eof_are_not_claimed(self):
+        # The held blanks are never flushed, so they must not leak into the
+        # block by default.
+        source = "Body.\n\n[^1]: the definition\n\n\n"
+
+        assert footnote_definition_lines(source) == frozenset({3})
 
     def test_fenced_code_is_skipped(self):
         # An article that documents footnote syntax is correct output; those
