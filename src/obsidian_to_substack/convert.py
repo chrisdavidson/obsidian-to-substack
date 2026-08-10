@@ -6,10 +6,7 @@ import json
 import logging
 import mimetypes
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
 import webbrowser
 from pathlib import Path
 
@@ -21,7 +18,7 @@ from obsidian_to_substack.image_assets import (
     referenced_svgs,
     rewrite_image_refs,
 )
-from obsidian_to_substack import preflight
+from obsidian_to_substack import clipboard, preflight
 from obsidian_to_substack.obsidian_syntax import (
     strip_obsidian_comments,
     transform_obsidian_syntax,
@@ -623,7 +620,7 @@ def main() -> None:
             # an all-results scan: a clean single-article paste starts
             # getting refused for a neighbour's defect.
             #
-            # Why the refusal also covers copy_title_to_primary, not just
+            # Why the refusal also covers copy_title, not just
             # copy_html_to_clipboard: PRIMARY is a clipboard write too, and
             # D-01 says write no clipboard — CLIPBOARD and PRIMARY both.
             #
@@ -670,7 +667,7 @@ def main() -> None:
                 )
 
             copy_html_to_clipboard(selected["html_path"])
-            copy_title_to_primary(selected.get("title", ""))
+            copy_title(selected.get("title", ""))
 
 
 def _inline_images(html_content: str, base_dir: Path) -> str:
@@ -698,101 +695,32 @@ def _inline_images(html_content: str, base_dir: Path) -> str:
 
 
 def copy_html_to_clipboard(html_path: str) -> None:
-    """Copy HTML file content to the system clipboard as rich text.
+    """Copy the written article to the system clipboard as rich text.
 
-    Uses xclip with text/html MIME type so Substack's editor
-    pastes it as formatted content rather than raw markup.
-    Images are inlined as base64 data URIs so they survive the paste.
+    Reads the file, inlines its images as base64 data URIs so they survive the
+    paste, and hands the result to whichever clipboard backend this platform
+    has. The per-platform mechanics live in `clipboard.py`; what belongs here
+    is the pipeline's own step — the file on disk is the source of truth for
+    what gets copied, so what the author pastes is exactly what was written.
     """
-    if not shutil.which("xclip"):
-        print(
-            "Error: xclip is required for --copy. Install it with:\n"
-            "  sudo apt install xclip",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    # Checked before the file is read so a missing tool is reported as a
+    # missing tool, not as a failure three stages downstream.
+    clipboard.ensure_backend()
 
     html_path_obj = Path(html_path)
     html_content = html_path_obj.read_text(encoding="utf-8")
     html_content = _inline_images(html_content, html_path_obj.parent)
 
-    failure = _run_xclip(
-        ["xclip", "-selection", "clipboard", "-t", "text/html"],
-        html_content.encode("utf-8"),
-    )
-    if failure is not None:
-        print(f"Error: clipboard copy failed: {failure}", file=sys.stderr)
-        sys.exit(1)
-
-    print("  Body on the clipboard — Ctrl+V into Substack's body")
+    clipboard.copy_html(html_content)
 
 
-def copy_title_to_primary(title: str) -> None:
-    """Put the resolved title on X11's PRIMARY selection as plain text.
+def copy_title(title: str) -> None:
+    """Hand the resolved title over for Substack's title field.
 
-    Substack does not hoist a leading H1 into its title field — probed
-    directly on 2026-08-08, the heading lands in the body and the title bar
-    stays empty. So the title has to be pasted by hand, and X11 holds only one
-    clipboard: copying the printed title out of the terminal would destroy the
-    body HTML that `--copy` just placed there.
-
-    PRIMARY is independent of CLIPBOARD, so a single run can hand over both —
-    Ctrl+V for the body, middle-click for the title.
-
-    Failure is deliberately non-fatal: a missing title is an inconvenience, a
-    lost body payload is a wasted run.
+    Thin by design: the platforms differ in whether they can do this at all,
+    and that judgement belongs in `clipboard.py` next to the backends.
     """
-    if not title:
-        return
-
-    if not shutil.which("xclip"):
-        return
-
-    failure = _run_xclip(
-        ["xclip", "-selection", "primary"],
-        title.encode("utf-8"),
-    )
-    if failure is not None:
-        print(
-            f"Warning: could not put the title on the primary selection: {failure}\n"
-            f"         Copy it from the Title line above instead.",
-            file=sys.stderr,
-        )
-        return
-
-    print("  Title on the primary selection — middle-click into the title field")
-
-
-def _run_xclip(argv: list[str], payload: bytes) -> str | None:
-    """Hand `payload` to xclip. Returns None on success, else the error text.
-
-    xclip must not inherit our stdout/stderr. An X11 selection is owned by a
-    live process: xclip forks a background child to serve the selection and the
-    parent exits immediately. That child keeps any inherited descriptor open
-    for as long as it owns the selection, so when our output is a pipe the
-    reader never sees EOF and the caller stalls indefinitely — even though this
-    process has already exited. A terminal has no EOF to wait for, which is why
-    this only bites scripted use.
-
-    stderr goes to a temp file rather than DEVNULL so xclip's own diagnostics
-    survive, and rather than PIPE because reading a pipe to EOF would
-    reintroduce the very stall being avoided.
-    """
-    with tempfile.TemporaryFile() as err_file:
-        try:
-            subprocess.run(
-                argv,
-                input=payload,
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=err_file,
-            )
-        except subprocess.CalledProcessError as exc:
-            err_file.seek(0)
-            detail = err_file.read().decode("utf-8", "replace").strip()
-            return detail or str(exc)
-
-    return None
+    clipboard.copy_title(title)
 
 
 if __name__ == "__main__":

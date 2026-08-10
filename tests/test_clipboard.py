@@ -10,6 +10,7 @@ not prove a clipboard was written, and no amount of them ever will.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -199,28 +200,64 @@ class TestWindowsBackend:
         argv = run.call_args[0][0]
         assert "powershell" in argv[0].lower() or "pwsh" in argv[0].lower()
 
-    def test_the_payload_file_holds_cf_html(self, tmp_path):
-        written: dict[str, str] = {}
+    def test_the_payload_file_holds_cf_html_while_powershell_runs(self):
+        # Read the file from inside the fake subprocess call, which is the
+        # only moment it is guaranteed to exist -- copy_html deletes it in a
+        # finally block. Asserting after the call would pass against a path
+        # that was never written.
+        seen: dict[str, str] = {}
 
         def capture(argv, **kwargs):
-            # The temp file must still exist while PowerShell would read it.
-            for arg in argv:
-                if arg.endswith(".html") or "clipboard" in str(arg):
-                    pass
-            written["argv"] = argv
+            command = argv[-1]
+            path = command.split("ReadAllText('")[1].split("'")[0]
+            seen["payload"] = Path(path).read_text(encoding="ascii")
+            seen["command"] = command
             return None
 
         with (
             patch("sys.platform", "win32"),
             patch("shutil.which", side_effect=lambda name: f"C:\\{name}"),
-            patch("subprocess.run", side_effect=capture) as run,
+            patch("subprocess.run", side_effect=capture),
+        ):
+            copy_html("<p>hello — world</p>")
+
+        assert seen["payload"].startswith("Version:")
+        assert "<p>hello &#8212; world</p>" in seen["payload"]
+        assert "TextDataFormat]::Html" in seen["command"]
+
+    def test_the_payload_file_is_cleaned_up(self):
+        captured: dict[str, str] = {}
+
+        def capture(argv, **kwargs):
+            captured["path"] = argv[-1].split("ReadAllText('")[1].split("'")[0]
+            return None
+
+        with (
+            patch("sys.platform", "win32"),
+            patch("shutil.which", side_effect=lambda name: f"C:\\{name}"),
+            patch("subprocess.run", side_effect=capture),
         ):
             copy_html("<p>hello</p>")
 
-        # The CF_HTML must reach PowerShell somehow -- either inline in the
-        # command or via a file path named in it.
-        joined = " ".join(str(a) for a in run.call_args[0][0])
-        assert "Clipboard" in joined
+        assert not Path(captured["path"]).exists()
+
+    def test_the_article_never_reaches_the_command_line(self):
+        # Same argument-length reason as macOS: a real article with inlined
+        # images is far past any command-length limit.
+        seen: dict[str, str] = {}
+
+        def capture(argv, **kwargs):
+            seen["command"] = argv[-1]
+            return None
+
+        with (
+            patch("sys.platform", "win32"),
+            patch("shutil.which", side_effect=lambda name: f"C:\\{name}"),
+            patch("subprocess.run", side_effect=capture),
+        ):
+            copy_html("<p>a distinctive sentence</p>")
+
+        assert "distinctive" not in seen["command"]
 
     def test_missing_powershell_exits_with_a_message(self, capsys):
         with (
@@ -242,6 +279,66 @@ class TestUnsupportedPlatform:
             copy_html("<p>hello</p>")
 
         assert "sunos5" in capsys.readouterr().err
+
+
+class TestAgainstARealArticle:
+    """The unit tests above use toy fragments. A real article is 100kB of
+    inlined base64 with a handful of non-ASCII characters buried in it, which
+    is where offset arithmetic and argument limits actually bite."""
+
+    def _article(self, tmp_path) -> str:
+        from obsidian_to_substack.convert import _inline_images, convert_article
+
+        fixture = (
+            Path(__file__).parent / "fixtures" / "torture_test" / "torture-test.md"
+        )
+        result = convert_article(str(fixture), str(tmp_path))
+        written = Path(result["html_path"])
+        return _inline_images(written.read_text(encoding="utf-8"), written.parent)
+
+    def test_the_macos_hex_round_trips_byte_for_byte(self, tmp_path):
+        from obsidian_to_substack.clipboard import _MACOS_SCRIPT
+
+        html = self._article(tmp_path)
+        script = _MACOS_SCRIPT.format(hex=html.encode("utf-8").hex())
+
+        payload = script.split("«data HTML")[1].rstrip("»}")
+        assert bytes.fromhex(payload).decode("utf-8") == html
+
+    def test_the_macos_script_is_too_long_for_argv(self, tmp_path):
+        # The reason it goes in on stdin, asserted rather than asserted-in-a-
+        # comment. Linux caps a single argument at 128kB (MAX_ARG_STRLEN); the
+        # hex doubles an already-100kB article.
+        from obsidian_to_substack.clipboard import _MACOS_SCRIPT
+
+        html = self._article(tmp_path)
+        script = _MACOS_SCRIPT.format(hex=html.encode("utf-8").hex())
+
+        assert len(script.encode("utf-8")) > 131072
+
+    def test_cf_html_offsets_are_true_of_a_real_article(self, tmp_path):
+        html = self._article(tmp_path)
+        payload = build_cf_html(html)
+        raw = payload.encode("ascii")
+
+        offsets = {}
+        for line in payload.split("\r\n"):
+            for key in ("StartHTML", "EndHTML", "StartFragment", "EndFragment"):
+                if line.startswith(key + ":"):
+                    offsets[key] = int(line.split(":", 1)[1])
+
+        assert raw[offsets["StartHTML"]:].startswith(b"<html>")
+        assert offsets["EndHTML"] == len(raw)
+        fragment = raw[offsets["StartFragment"]:offsets["EndFragment"]].decode("ascii")
+        assert fragment.startswith("<!DOCTYPE html>")
+        assert fragment.endswith("</html>")
+
+    def test_a_real_article_carries_non_ascii(self, tmp_path):
+        # Guard the two tests above: if the fixture ever went pure ASCII they
+        # would still pass while proving nothing about the case that matters.
+        html = self._article(tmp_path)
+
+        assert any(ord(char) > 127 for char in html)
 
 
 class TestTitleHandoff:

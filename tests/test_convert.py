@@ -16,7 +16,7 @@ from obsidian_to_substack.convert import (
     convert_article,
     convert_directory,
     copy_html_to_clipboard,
-    copy_title_to_primary,
+    copy_title,
     main,
     slugify,
 )
@@ -347,7 +347,7 @@ class TestCopyTitleToPrimary:
             patch("shutil.which", return_value="/usr/bin/xclip"),
             patch("subprocess.run") as mock_run,
         ):
-            copy_title_to_primary("Torture Test: Every Construct")
+            copy_title("Torture Test: Every Construct")
             argv = mock_run.call_args[0][0]
             assert argv == ["xclip", "-selection", "primary"]
             # No -t text/html: the title field takes plain text.
@@ -361,7 +361,7 @@ class TestCopyTitleToPrimary:
             patch("shutil.which", return_value="/usr/bin/xclip"),
             patch("subprocess.run") as mock_run,
         ):
-            copy_title_to_primary("A Title")
+            copy_title("A Title")
             kwargs = mock_run.call_args[1]
             assert kwargs["stdout"] is subprocess.DEVNULL
             assert kwargs["stderr"] is not None
@@ -378,7 +378,7 @@ class TestCopyTitleToPrimary:
             patch("shutil.which", return_value="/usr/bin/xclip"),
             patch("subprocess.run", side_effect=fail),
         ):
-            copy_title_to_primary("A Title")  # must not raise SystemExit
+            copy_title("A Title")  # must not raise SystemExit
 
         assert "Can't open display" in capsys.readouterr().err
 
@@ -387,7 +387,7 @@ class TestCopyTitleToPrimary:
             patch("shutil.which", return_value="/usr/bin/xclip"),
             patch("subprocess.run") as mock_run,
         ):
-            copy_title_to_primary("")
+            copy_title("")
             mock_run.assert_not_called()
 
 
@@ -712,7 +712,7 @@ class TestCopyWarningGate:
     Every case drives main() through monkeypatch.setattr(sys, "argv", ...),
     patching shutil.which to report xclip present and subprocess.run to
     record (not perform) the clipboard writes -- CLIPBOARD via
-    copy_html_to_clipboard, PRIMARY via copy_title_to_primary. A refusal
+    copy_html_to_clipboard, PRIMARY via copy_title. A refusal
     means subprocess.run is never called at all, which covers both
     selections in one assertion.
     """
