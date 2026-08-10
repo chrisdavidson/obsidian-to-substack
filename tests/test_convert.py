@@ -762,6 +762,71 @@ class TestCopyWarningGate:
         # must not print the clipboard success line either.
         assert "Body on the clipboard" not in captured.out
 
+    def test_refusal_flushes_stdout_before_the_stderr_message(
+        self, tmp_path, monkeypatch
+    ):
+        """The refusal points at "(see above)", so stdout must be flushed first.
+
+        stderr is unbuffered while stdout is block-buffered whenever it is not
+        a tty. So under `> run.log` or `| tee` the refusal lands *above* the
+        preflight warnings it tells the author to look up at -- misdirecting in
+        exactly the runs someone is most likely to keep and re-read. Measured
+        before the fix on the real vault article: the refusal appeared on line
+        4 of a captured run whose warnings began on line 9.
+
+        This is the one message the whole `--copy` gate exists to deliver, so a
+        message that misdirects is a correctness bug, not a cosmetic one -- a
+        smaller instance of the very defect the gate closes.
+
+        Do not delete the `sys.stdout.flush()` this pins. `capsys` collects the
+        two streams into separate buffers, so no assertion on `captured.out` /
+        `captured.err` can see the interleaving; only recording both streams
+        into one ordered log catches the regression, which is why this test
+        replaces the stream objects instead.
+        """
+        self._write_warning_article(tmp_path)
+        monkeypatch.setattr(sys, "argv", self._argv(tmp_path, tmp_path / "out"))
+
+        events: list[str] = []
+
+        class _OrderedRecorder:
+            """Records writes and flushes from both streams into one list."""
+
+            def __init__(self, label: str) -> None:
+                self._label = label
+
+            def write(self, text: str) -> int:
+                if text.strip():
+                    events.append(f"{self._label}:{text.strip()[:60]}")
+                return len(text)
+
+            def flush(self) -> None:
+                events.append(f"{self._label}:FLUSH")
+
+            def isatty(self) -> bool:
+                return False
+
+        monkeypatch.setattr(sys, "stdout", _OrderedRecorder("out"))
+        monkeypatch.setattr(sys, "stderr", _OrderedRecorder("err"))
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/xclip"),
+            patch("subprocess.run"),
+        ):
+            with pytest.raises(SystemExit):
+                main()
+
+        refusal_at = next(
+            i
+            for i, event in enumerate(events)
+            if event.startswith("err:") and "refused" in event
+        )
+        assert "out:FLUSH" in events[:refusal_at], (
+            "stdout was not flushed before the refusal was written to stderr, "
+            "so a redirected run prints the refusal above the warnings it "
+            f"points at. Recorded order: {events[: refusal_at + 1]}"
+        )
+
     def test_force_overrides_the_refusal(self, tmp_path, monkeypatch, capsys):
         self._write_warning_article(tmp_path)
         monkeypatch.setattr(
