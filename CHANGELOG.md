@@ -5,6 +5,81 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-08-10
+
+A run that knows its output is broken can no longer end by reporting success.
+
+v1.1 taught the converter to notice problems. It still announced them and then
+did exactly what it was going to do anyway — printed six warnings and loaded the
+clipboard regardless. That is the shape of the 2026-08-08 incident: the warning
+fired, and the `%%comment%%` reached a published post because nothing stood
+between the warning and the paste.
+
+### Added
+
+- **`--copy` refuses when preflight warned.** It exits non-zero and writes to
+  neither X11 selection, naming the warning count and the article. `--force`
+  copies anyway and says so, because not every warning is a reason to stop —
+  `slug_title` in particular is noise-controlled against the corpus and still
+  fires on a few legitimate titles.
+
+  The gate lives in the CLI, not in `preflight.check`, which stays advisory and
+  non-corrective. `main()` is the only layer that owns "did this run succeed."
+
+- **`--dry-run` names unresolvable image references.** It returns before
+  conversion and so never reached the result formatter, which meant the one
+  check most worth having before a real run was the one it could not report.
+  Exit stays 0 — dry-run reports, `--copy` refuses.
+
+### Fixed
+
+- **Footnote definitions written mid-document were reported as vanished prose.**
+  Rendering relocates every definition to the end of the document, and the
+  fidelity comparator aligns in order, so a definition written under the
+  paragraph that cites it — Obsidian's normal habit — traded places with the
+  text below it and read as a deletion.
+
+  It compounds with the gate above: `--copy` refuses on any warning, so a
+  correctly written article was pushed onto `--force`, which is the bypass whose
+  absence caused the incident this release exists to prevent. **A check that
+  fires on correct input teaches you to walk around it.**
+
+  Reconciled rather than authorised, as tables already were, and per-footnote
+  rather than per-document: a word is excused only when it reached that
+  definition's own rendered entry, so a body the renderer dropped is still
+  reported and a sibling footnote sharing its vocabulary cannot vouch for it.
+
+- **The per-article `svg/<slug>/` directory is now preferred when defaulting.**
+  The vault moved to per-article SVG subdirectories; the flat `svg/` parent
+  still passed `is_dir()` while the non-recursive glob found nothing in it, so
+  six `<img>` tags were written for PNGs nobody generated. Hit in the composer,
+  not in a test.
+
+- **`--dry-run` and a real run agree about SVGs.** The dry-run branch carried its
+  own copy of the directory logic and reported 0 SVGs whenever `--svg-dir` was
+  omitted. The duplication *was* the defect; there is now one rule.
+
+- **The `--copy` refusal no longer prints above the warnings it points at.** The
+  refusal goes to unbuffered stderr while stdout is block-buffered off a tty, so
+  under `> run.log` or `| tee` its "(see above)" pointed downward — misleading in
+  exactly the runs an author keeps.
+
+### Notes
+
+First release where a defect was found by grounding the project against its own
+purpose rather than by a failure in the field. The footnote fix above came out
+of that review; every prior fix came after something had already cost something.
+
+Two measurements worth keeping, because a clean report means nothing without
+them. Across the author's 46-article corpus: **46/46 convert with zero failures,
+37 fully clean**, and the only warnings are 7 `slug_title` and 5 `missing_image`
+— no leaked comments, no literal footnote markers, no table placeholders, no
+fidelity loss. And fidelity coverage held at **93.8%** through the footnote fix
+(20 words withheld in total), which is what separates a narrow reconciliation
+from an amnesty that would also read clean.
+
+368 tests pass, up from 325.
+
 ## [1.1.0] — 2026-08-09
 
 Checks the other direction. Every release up to now made sure the output was
@@ -138,5 +213,6 @@ Recorded rather than absorbed — each was established by hand against a real dr
   hand-off additionally needs a browser that honours middle-click paste of the
   primary selection.
 
+[1.2.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.2
 [1.1.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.1
 [1.0.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.0
