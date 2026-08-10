@@ -942,6 +942,35 @@ class TestDryRunImageRefs:
         out = capsys.readouterr().out
         assert "missing-diagram.svg" in out
 
+    def test_main_prints_no_unresolved_header_when_everything_resolves(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        # D-02's "exits 0 either way" truth covers both directions -- this
+        # pins the resolving side through main() itself, not just through
+        # convert_article(), since the two exercise different code paths
+        # (main()'s dry-run print block is unreached by a direct
+        # convert_article() call).
+        svg_dir = tmp_path / "svg"
+        svg_dir.mkdir()
+        shutil.copy(FIXTURES_DIR / "sample-diagram.svg", svg_dir / "sample-diagram.svg")
+        self._write_article(
+            tmp_path, "# My Article\n\n![[sample-diagram.svg]]\n\nBody.\n"
+        )
+        argv = [
+            "obsidian-to-substack",
+            str(tmp_path),
+            "--file", "my-article.md",
+            "--output-dir", str(tmp_path / "out"),
+            "--dry-run",
+        ]
+        monkeypatch.setattr(sys, "argv", argv)
+
+        main()  # must not raise SystemExit
+
+        out = capsys.readouterr().out
+        assert "[DRY RUN]" in out
+        assert "will not resolve" not in out
+
     def test_pure_function_no_mutation(self):
         from obsidian_to_substack.image_assets import referenced_svgs
 
