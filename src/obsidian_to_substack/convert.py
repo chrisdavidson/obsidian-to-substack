@@ -14,10 +14,19 @@ import webbrowser
 from pathlib import Path
 
 from obsidian_to_substack.frontmatter import parse_frontmatter
-from obsidian_to_substack.image_assets import copy_raster_embeds, rewrite_image_refs
+from obsidian_to_substack.image_assets import (
+    copy_raster_embeds,
+    find_image,
+    referenced_images,
+    referenced_svgs,
+    rewrite_image_refs,
+)
 from obsidian_to_substack import preflight
-from obsidian_to_substack.obsidian_syntax import transform_obsidian_syntax
-from obsidian_to_substack.svg_export import export_all_svgs, validate_png
+from obsidian_to_substack.obsidian_syntax import (
+    strip_obsidian_comments,
+    transform_obsidian_syntax,
+)
+from obsidian_to_substack.svg_export import export_all_svgs, svg_sources, validate_png
 from obsidian_to_substack.table_handler import (
     extract_tables,
     replace_tables_with_images,
@@ -90,6 +99,129 @@ def _resolve_default_svg_dir(source_dir: Path, slug: str) -> Path:
     return source_dir / "svg"
 
 
+def _resolve_search_dirs(
+    source_dir: Path, svg_dir: Path, svg_dir_was_explicit: bool
+) -> list[Path]:
+    """The directories a raster embed is looked up in, real path and dry-run alike.
+
+    Lifted verbatim from convert_article's raster-copy step, where it used
+    to be built inline. 260809-plg existed because `dry_run` carried its own
+    copy of the SVG-directory-resolution rule instead of calling
+    `_resolve_default_svg_dir`; extracting this rule the same way keeps
+    `unresolved_image_refs` from growing a second copy of THIS one.
+
+    Embeds that already name a raster file are not rasterized by
+    export_all_svgs, so they still need to be found some other way —
+    otherwise the <img src> points at a file that is not next to
+    article.html and pastes broken (DIAG-02).
+
+    The result is a strict superset of just [source_dir, svg_dir]: the
+    article's own directory and the resolved svg_dir are always included;
+    the flat <article dir>/svg is folded in too, but only when svg_dir was
+    defaulted (an explicit --svg-dir is the operator's override and gets
+    nothing added) and only when it differs from the already-resolved
+    directory (avoiding a redundant duplicate when the default resolved to
+    the flat directory in the first place). This is what keeps a flat
+    raster embed findable even when the per-slug SVG directory wins — see
+    _resolve_default_svg_dir's point (d). It does not reintroduce the
+    non-recursive-glob hazard: copy_raster_embeds and find_image only look
+    for files an embed actually names, so a shared flat directory can never
+    pull another article's diagrams into this article's output.
+    """
+    search_dirs = [source_dir, svg_dir]
+    if not svg_dir_was_explicit:
+        flat_svg_dir = source_dir / "svg"
+        if flat_svg_dir not in search_dirs:
+            search_dirs.append(flat_svg_dir)
+    return search_dirs
+
+
+def unresolved_image_refs(
+    body: str, source_dir: Path, svg_dir: Path, svg_dir_was_explicit: bool
+) -> list[str]:
+    """Return every embed name --dry-run predicts will paste broken (D-02).
+
+    Pure: reads the filesystem via svg_sources/find_image, returns a new
+    list, mutates nothing.
+
+    Extracts from `strip_obsidian_comments(body)`, not from `body` itself —
+    this is the call a later reader will most plausibly undo, so it is
+    commented at length. The real path's raster copying runs pre-strip and
+    that is deliberate and already recorded elsewhere (an embed inside a
+    comment still rasterizes to disk, leaving an orphan file, and the
+    project accepted that). But the question THIS function answers is which
+    references will *paste* broken, and the pasted <img> set is decided by
+    `replace_image_embeds`, which runs INSIDE `transform_obsidian_syntax`
+    AFTER `strip_obsidian_comments`. Extracting pre-strip would report a
+    commented-out embed that never becomes an <img> — a false positive, and
+    this is a check, not a transformation: "fail closed and be loud"
+    governs transformations, but every check in preflight.py refuses false
+    positives on purpose, and this function follows that half of the house
+    convention instead. What regresses if someone switches this to `body`
+    to "match the real path": the check starts reporting defects the
+    author cannot act on, and the noise preflight was noise-controlled to
+    avoid comes back through the side door.
+
+    The strongest argument FOR sharing the transform, stated here because
+    it is easy to miss: the fail-closed path composes correctly for free.
+    With an odd marker count `strip_obsidian_comments` strips nothing, so
+    this function extracts the commented embed and reports it — and the
+    real run also strips nothing, so that embed genuinely does become an
+    <img> and genuinely does paste broken. A hand-rolled "skip anything
+    between %% markers" shortcut would get that case wrong in the silent
+    direction.
+
+    SVG half: a referenced_svgs() name is unresolved when its basename is
+    not among svg_sources(svg_dir)'s basenames — exactly the image_map keys
+    export_all_svgs would produce, which is exactly what
+    replace_image_embeds looks up before falling back to the unconditional
+    .svg -> .png rewrite. That fallback is the DIAG-02 mechanism, and this
+    membership test is its predicate. Basenames are compared, not the raw
+    embed text: replace_image_embeds ends with
+    `src = os.path.basename(raw_src)` — it basenames unconditionally,
+    AFTER the fallback. So `![[svg/diagram.svg]]` misses the image_map
+    lookup, falls back to `svg/diagram.png`, and is emitted as
+    `diagram.png` — which exists when `diagram.svg` was in the resolved
+    directory. Comparing the raw name would report that as broken: a false
+    positive of exactly the class the paragraph above argues against.
+    (Measured today: 0 of the 45 distinct `![[...svg]]` embeds across the
+    two vault article directories carry a path prefix, so the bug is
+    latent, not live.)
+
+    Raster half: a referenced_images() name is unresolved when
+    find_image(name, _resolve_search_dirs(...)) returns None — the same
+    function copy_raster_embeds uses to make the same judgement. Sharing it
+    is correct even though find_image's basename fallback does a `**/`
+    recursive glob per directory, the most expensive thing dry-run does —
+    if that cost ever bites, the fix is to measure it, not to fork the
+    rule.
+
+    One boundary this function cannot see, recorded here so a later reader
+    files it as a limit rather than a bug: an SVG that exports but fails
+    validate_png is dropped from image_map at convert_article's PNG
+    validation step, and the real run then emits a broken <img> that this
+    function called fine. Detecting it would require actually exporting,
+    which D-02 rules out. preflight's missing_image check still catches it
+    on the real run.
+
+    Never calls copy_raster_embeds, export_all_svgs, or any other writing
+    function — D-02 requires dry-run to write nothing.
+    """
+    stripped = strip_obsidian_comments(body)
+    svg_basenames = {p.name for p in svg_sources(svg_dir)}
+    search_dirs = _resolve_search_dirs(source_dir, svg_dir, svg_dir_was_explicit)
+
+    unresolved: list[str] = []
+    for name in referenced_svgs(stripped):
+        if Path(name).name not in svg_basenames and name not in unresolved:
+            unresolved.append(name)
+    for name in referenced_images(stripped):
+        if find_image(name, search_dirs) is None and name not in unresolved:
+            unresolved.append(name)
+
+    return unresolved
+
+
 def convert_article(
     input_path: str,
     output_dir: str,
@@ -139,15 +271,30 @@ def convert_article(
         # is precisely what the real path already does at line ~154. No
         # test pins the empty-string case; it is a consequence of sharing
         # the rule, not a feature in its own right.
+        #
+        # svg_dir_was_explicit has to be captured BEFORE the defaulting
+        # line immediately below, exactly like the real path does — it
+        # feeds unresolved_image_refs' directory-resolution rule, and
+        # capturing it after defaulting would always read True.
+        svg_dir_was_explicit = svg_dir is not None
         if svg_dir is None:
             svg_dir = str(_resolve_default_svg_dir(source.parent, slug))
         svg_path = Path(svg_dir)
-        svg_count = len(list(svg_path.glob("*.svg"))) if svg_path.is_dir() else 0
+        svg_count = len(svg_sources(svg_path))
+
+        # unresolved_images is the D-02 finding: every embed name that will
+        # not resolve, and so will paste broken, computed the same way
+        # (and sharing the same directory-resolution rule) as the real
+        # run — see unresolved_image_refs' docstring.
+        unresolved_images = unresolved_image_refs(
+            body, source.parent, svg_path, svg_dir_was_explicit
+        )
         return {
             "slug": slug,
             "metadata": metadata,
             "table_count": len(tables),
             "svg_count": svg_count,
+            "unresolved_images": unresolved_images,
             "dry_run": True,
         }
 
@@ -188,24 +335,10 @@ def convert_article(
     # Embeds that already name a raster file are not rasterized by
     # export_all_svgs, so copy them in — otherwise the <img src> points at a
     # file that is not next to article.html and pastes broken (DIAG-02).
-    #
-    # search_dirs is a strict superset of what it was before the per-slug
-    # fix: the article's own directory and the resolved svg_dir are always
-    # included; the flat <article dir>/svg is folded in too, but only when
-    # svg_dir was defaulted (an explicit --svg-dir is the operator's
-    # override and gets nothing added) and only when it differs from the
-    # already-resolved directory (avoiding a redundant duplicate when the
-    # default resolved to the flat directory in the first place). This is
-    # what keeps a flat raster embed findable even when the per-slug SVG
-    # directory wins — see _resolve_default_svg_dir's point (d). It does not
-    # reintroduce the non-recursive-glob hazard: copy_raster_embeds only
-    # copies files an embed actually names, so a shared flat directory can
-    # never pull another article's diagrams into this output dir.
-    search_dirs = [source.parent, Path(svg_dir)]
-    if not svg_dir_was_explicit:
-        flat_svg_dir = source.parent / "svg"
-        if flat_svg_dir not in search_dirs:
-            search_dirs.append(flat_svg_dir)
+    # See _resolve_search_dirs' docstring for the shape of the rule; the
+    # long comment that used to live inline here moved with the code when
+    # it was extracted so dry-run's unresolved_image_refs could share it.
+    search_dirs = _resolve_search_dirs(source.parent, Path(svg_dir), svg_dir_was_explicit)
     copied = copy_raster_embeds(body, search_dirs, str(article_output))
     image_map.update(copied)
     body = rewrite_image_refs(body, copied)
@@ -426,6 +559,19 @@ def main() -> None:
             print(f"  FAILED: {result['file']} — {result['error']}")
         elif result.get("dry_run"):
             print(f"  [DRY RUN] {result['slug']}: {result['table_count']} tables, {result['svg_count']} SVGs")
+            # D-02: report unresolvable image references, the one finding
+            # that would have caught the DIAG-02 incident before a real
+            # conversion ran. Exit stays 0 here -- D-01 says "exit
+            # non-zero" for --copy, D-02 says "report" for --dry-run, and
+            # the author chose those two different verbs on purpose.
+            unresolved = result.get("unresolved_images") or []
+            if unresolved:
+                print(
+                    f"    {len(unresolved)} image reference(s) will not "
+                    "resolve and will paste broken:"
+                )
+                for name in unresolved:
+                    print(f"      {name}")
         else:
             for line in format_result_lines(result):
                 print(line)

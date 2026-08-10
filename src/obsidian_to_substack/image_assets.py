@@ -23,10 +23,34 @@ from .obsidian_syntax import IMAGE_EMBED_PATTERN
 logger = logging.getLogger(__name__)
 
 RASTER_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+SVG_SUFFIXES = {".svg"}
 
 # Standard Markdown images: ![alt](path). Alt text can be long and contain
 # brackets-free prose, and the path may be percent-encoded.
 MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
+
+
+def _referenced_matching_suffix(
+    text: str, patterns: tuple[re.Pattern, ...], suffixes: set[str]
+) -> list[str]:
+    """Shared core of referenced_images and referenced_svgs.
+
+    Writes the http/https/data skip, the percent-decode, the suffix test,
+    and the order-preserving dedup exactly once for both callers.
+    """
+    seen: list[str] = []
+
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            filename = match.group(1).strip()
+            if filename.startswith(("http://", "https://", "data:")):
+                continue
+            if Path(unquote(filename)).suffix.lower() not in suffixes:
+                continue
+            if filename not in seen:
+                seen.append(filename)
+
+    return seen
 
 
 def referenced_images(text: str) -> list[str]:
@@ -35,19 +59,27 @@ def referenced_images(text: str) -> list[str]:
     Covers both Obsidian embeds (`![[a.png]]`) and Markdown images
     (`![alt](a.png)`), since the vault uses both.
     """
-    seen: list[str] = []
+    return _referenced_matching_suffix(
+        text, (IMAGE_EMBED_PATTERN, MARKDOWN_IMAGE_PATTERN), RASTER_SUFFIXES
+    )
 
-    for pattern in (IMAGE_EMBED_PATTERN, MARKDOWN_IMAGE_PATTERN):
-        for match in pattern.finditer(text):
-            filename = match.group(1).strip()
-            if filename.startswith(("http://", "https://", "data:")):
-                continue
-            if Path(unquote(filename)).suffix.lower() not in RASTER_SUFFIXES:
-                continue
-            if filename not in seen:
-                seen.append(filename)
 
-    return seen
+def referenced_svgs(text: str) -> list[str]:
+    """Return every SVG the text references, in order, deduplicated.
+
+    Scans `IMAGE_EMBED_PATTERN` (`![[x.svg]]`) only, not
+    `MARKDOWN_IMAGE_PATTERN` (`![alt](x.svg)`). This is a measured
+    exclusion, not an assumption: `![alt](x.svg)` occurs 0 times across the
+    70 Markdown files in the two vault article directories and 0 times in
+    tests/fixtures/, while `![[x.svg]]` occurs in 11 of them. The
+    consequence a later reader should know: the Markdown form does produce
+    a broken reference today — nothing copies it, and preflight's
+    `missing_image` check catches it — so a caller of this function
+    under-reports relative to preflight on a form the corpus does not use.
+    If that form ever appears, the fix is to widen this pattern list, not
+    to fork the rule.
+    """
+    return _referenced_matching_suffix(text, (IMAGE_EMBED_PATTERN,), SVG_SUFFIXES)
 
 
 def find_image(filename: str, search_dirs: list[Path]) -> Path | None:

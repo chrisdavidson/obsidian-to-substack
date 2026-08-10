@@ -60,6 +60,39 @@ def export_svg_to_png(
     return str(png_path)
 
 
+def svg_sources(svg_dir: str | Path) -> list[Path]:
+    """Return every SVG directly inside svg_dir, sorted, non-recursive.
+
+    `[]` when svg_dir does not exist or is not a directory. Pure: reads the
+    filesystem, returns a new list, mutates nothing.
+
+    This is the ONE place in src/ that globs `*.svg` — export_all_svgs below
+    and convert.py's dry-run resolution (`unresolved_image_refs` and the
+    `svg_count` it once computed inline) both call this instead of globbing
+    for themselves. 260809-plg existed because `dry_run` carried its own
+    copy of the SVG-directory-resolution logic; a second glob anywhere else
+    would recreate that exact defect inside the function meant to close it.
+
+    The glob stays non-recursive for the same reason
+    _resolve_default_svg_dir's point (b) in convert.py gives:
+    `export_all_svgs` flattens every SVG to its basename in the output
+    directory, so a recursive sweep over the shared flat `svg/` would export
+    every article's diagrams into every article's output directory and
+    collide on any shared basename.
+
+    Deliberately does NOT own "SVG directory not found" reporting — that
+    stays export_all_svgs' problem to report, since it is the caller that
+    knows a missing directory is worth a warning. This helper only answers
+    "what SVGs are here", so a caller with a different reason to want that
+    answer (dry-run has none to warn about) is not forced to inherit
+    export_all_svgs' opinion about it.
+    """
+    directory = Path(svg_dir)
+    if not directory.is_dir():
+        return []
+    return sorted(directory.glob("*.svg"))
+
+
 def export_all_svgs(
     svg_dir: str,
     output_dir: str,
@@ -69,13 +102,12 @@ def export_all_svgs(
 
     Returns a mapping of {original_filename: png_path}.
     """
-    svg_directory = Path(svg_dir)
-    if not svg_directory.is_dir():
+    if not Path(svg_dir).is_dir():
         logger.warning("SVG directory not found: %s", svg_dir)
         return {}
 
     image_map: dict[str, str] = {}
-    for svg_file in sorted(svg_directory.glob("*.svg")):
+    for svg_file in svg_sources(svg_dir):
         try:
             png_path = export_svg_to_png(str(svg_file), output_dir, scale=scale)
             image_map[svg_file.name] = png_path
