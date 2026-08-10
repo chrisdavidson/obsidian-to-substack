@@ -511,8 +511,9 @@ def main() -> None:
         "--copy",
         action="store_true",
         help=(
-            "Copy HTML to clipboard for pasting into Substack (requires "
-            "xclip). Refuses when preflight found a warning; see --force."
+            "Copy HTML to clipboard for pasting into Substack (needs xclip "
+            "on Linux, osascript on macOS, PowerShell on Windows). Refuses "
+            "when preflight found a warning; see --force."
         ),
     )
     parser.add_argument(
