@@ -377,7 +377,18 @@ def main() -> None:
     parser.add_argument(
         "--copy",
         action="store_true",
-        help="Copy HTML to clipboard for pasting into Substack (requires xclip)",
+        help=(
+            "Copy HTML to clipboard for pasting into Substack (requires "
+            "xclip). Refuses when preflight found a warning; see --force."
+        ),
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Copy anyway when preflight warned (only meaningful with "
+            "--copy)"
+        ),
     )
 
     args = parser.parse_args()
@@ -427,12 +438,77 @@ def main() -> None:
                 break
 
     if args.copy and not args.dry_run:
-        for result in results:
-            html_path = result.get("html_path")
-            if html_path:
-                copy_html_to_clipboard(html_path)
-                copy_title_to_primary(result.get("title", ""))
-                break
+        # Select the article this run is about ONCE, and feed that single
+        # object to both the warning gate below and the copy itself — never
+        # scan `results` twice for two notions of "the article this run is
+        # about". That duplication is exactly what 260809-plg had to unpick
+        # when `dry_run` carried its own copy of the SVG-directory logic;
+        # writing it twice here would just recreate the same class of bug in
+        # a new place.
+        selected = next((r for r in results if r.get("html_path")), None)
+
+        if selected is not None:
+            warning_count = len(selected.get("warnings", []))
+
+            # D-01: `--copy` refuses to write anything when preflight found
+            # a warning on the selected article, with `--force` as the
+            # escape hatch.
+            #
+            # Why the gate lives here and not in preflight.py or
+            # convert_article: preflight.check is advisory and
+            # non-corrective by a convention with history behind it (see
+            # preflight.py's module docstring), and convert_article is
+            # called directly by tools/ and by tests that need a result dict
+            # back regardless of whether it warned. The CLI's main() is the
+            # only layer that owns "did this run succeed" — it is where the
+            # decision to write to the clipboard is made, so it is where the
+            # decision to refuse belongs.
+            #
+            # Why the gate reads only the SELECTED article's warnings, not
+            # every result in the run: `--copy` copies exactly one article.
+            # Refusing because an unrelated article elsewhere in the same
+            # directory has a warning would be the false-positive noise
+            # _check_slug_title was measured down to 3/25 to avoid — and it
+            # would wear the --force hatch smooth until it stopped meaning
+            # anything. What regresses if a later reader "hardens" this into
+            # an all-results scan: a clean single-article paste starts
+            # getting refused for a neighbour's defect.
+            #
+            # Why the refusal also covers copy_title_to_primary, not just
+            # copy_html_to_clipboard: PRIMARY is a clipboard write too, and
+            # D-01 says write no clipboard — CLIPBOARD and PRIMARY both.
+            #
+            # Why exit 1 and not a distinct code: it matches the existing
+            # xclip-failure exit below (copy_html_to_clipboard,
+            # _run_xclip's caller) and nothing downstream scripts a
+            # distinction between the two failure reasons.
+            #
+            # Why --force exists at all: some warnings are known noise —
+            # `slug_title` was noise-controlled to 3/25 against the
+            # published corpus specifically because it cannot be eliminated
+            # without also silencing genuinely bad titles. A hard block
+            # here would stop a legitimate paste on exactly that noise.
+            if warning_count and not args.force:
+                # format_result_lines already printed the individual
+                # warnings above, via preflight.report — this message names
+                # only the count and the escape hatch, not the warnings
+                # themselves.
+                print(
+                    f"Error: --copy refused — {warning_count} preflight "
+                    f"warning(s) on {selected['slug']!r} (see above). "
+                    "Re-run with --force to copy anyway.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
+            if warning_count:
+                print(
+                    f"  Copying despite {warning_count} preflight "
+                    "warning(s) (--force)"
+                )
+
+            copy_html_to_clipboard(selected["html_path"])
+            copy_title_to_primary(selected.get("title", ""))
 
 
 def _inline_images(html_content: str, base_dir: Path) -> str:
