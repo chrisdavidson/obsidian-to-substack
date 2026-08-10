@@ -810,3 +810,143 @@ class TestCopyWarningGate:
         monkeypatch.setattr(sys, "argv", argv)
 
         main()  # must not raise SystemExit
+
+
+class TestDryRunImageRefs:
+    """D-02: --dry-run reports every image reference that will not resolve.
+
+    Every case calls convert_article(..., dry_run=True) and asserts on the
+    returned result["unresolved_images"] list, never merely that the call
+    succeeded -- a wrong list that happens to be a list would pass a weaker
+    assertion silently.
+    """
+
+    def _write_article(self, tmp_path: Path, body: str) -> str:
+        source = tmp_path / "my-article.md"
+        source.write_text(body, encoding="utf-8")
+        return str(source)
+
+    def test_missing_svg_with_no_svg_dir_is_reported(self, tmp_path):
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[missing-diagram.svg]]\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"), dry_run=True)
+        assert result["unresolved_images"] == ["missing-diagram.svg"]
+
+    def test_present_svg_in_nested_slug_dir_resolves(self, tmp_path):
+        svg_subdir = tmp_path / "svg" / "my-article"
+        svg_subdir.mkdir(parents=True)
+        shutil.copy(
+            FIXTURES_DIR / "sample-diagram.svg", svg_subdir / "sample-diagram.svg"
+        )
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[sample-diagram.svg]]\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"), dry_run=True)
+        assert result["unresolved_images"] == []
+
+    def test_present_svg_in_flat_dir_resolves(self, tmp_path):
+        svg_dir = tmp_path / "svg"
+        svg_dir.mkdir()
+        shutil.copy(FIXTURES_DIR / "sample-diagram.svg", svg_dir / "sample-diagram.svg")
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[sample-diagram.svg]]\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"), dry_run=True)
+        assert result["unresolved_images"] == []
+
+    def test_path_prefixed_svg_embed_resolves_by_basename(self, tmp_path):
+        # replace_image_embeds basenames unconditionally, after the
+        # image_map fallback -- ![[svg/diagram.svg]] misses the lookup,
+        # falls back to svg/diagram.png, and is emitted as diagram.png.
+        # Comparing the raw embed text against the resolved directory would
+        # report this as broken; comparing basenames does not. Latent today
+        # (0 of 45 distinct corpus embeds carry a prefix); pinned so it
+        # stays that way.
+        svg_dir = tmp_path / "svg"
+        svg_dir.mkdir()
+        shutil.copy(FIXTURES_DIR / "sample-diagram.svg", svg_dir / "sample-diagram.svg")
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[svg/sample-diagram.svg]]\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"), dry_run=True)
+        assert result["unresolved_images"] == []
+
+    def test_missing_raster_is_reported(self, tmp_path):
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[nope.png]]\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"), dry_run=True)
+        assert result["unresolved_images"] == ["nope.png"]
+
+    def test_present_raster_beside_article_resolves(self, tmp_path):
+        from PIL import Image
+
+        img = Image.new("RGB", (10, 10))
+        img.save(tmp_path / "photo.png")
+
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[photo.png]]\n\nBody.\n"
+        )
+        result = convert_article(article, str(tmp_path / "out"), dry_run=True)
+        assert result["unresolved_images"] == []
+
+    def test_comment_only_embed_is_never_reported(self, tmp_path):
+        # An embed that exists only inside a %%comment%% never becomes an
+        # <img> -- replace_image_embeds runs inside transform_obsidian_syntax
+        # AFTER strip_obsidian_comments, so the check extracts from the
+        # stripped text, not the raw body, to predict the pasted <img> set
+        # rather than the orphan-file set.
+        article = self._write_article(
+            tmp_path,
+            "# My Article\n\n%%\n![[missing-diagram.svg]]\n%%\n\nBody.\n",
+        )
+        result = convert_article(article, str(tmp_path / "out"), dry_run=True)
+        assert result["unresolved_images"] == []
+
+    def test_order_and_dedup(self, tmp_path):
+        article = self._write_article(
+            tmp_path,
+            "# My Article\n\n![[nope-a.png]]\n\n![[nope-b.png]]\n\n"
+            "![[nope-a.png]]\n\nBody.\n",
+        )
+        result = convert_article(article, str(tmp_path / "out"), dry_run=True)
+        assert result["unresolved_images"] == ["nope-a.png", "nope-b.png"]
+
+    def test_writes_nothing(self, tmp_path):
+        # Stronger than test_dry_run's "no *.html" -- pins D-02's cheapness
+        # clause: a dry run must not create the output directory at all.
+        article = self._write_article(
+            tmp_path, "# My Article\n\n![[missing-diagram.svg]]\n\nBody.\n"
+        )
+        convert_article(article, str(tmp_path / "out"), dry_run=True)
+        assert not (tmp_path / "out").exists()
+
+    def test_main_prints_unresolved_reference_and_exits_zero(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        self._write_article(
+            tmp_path, "# My Article\n\n![[missing-diagram.svg]]\n\nBody.\n"
+        )
+        argv = [
+            "obsidian-to-substack",
+            str(tmp_path),
+            "--file", "my-article.md",
+            "--output-dir", str(tmp_path / "out"),
+            "--dry-run",
+        ]
+        monkeypatch.setattr(sys, "argv", argv)
+
+        main()  # must not raise SystemExit
+
+        out = capsys.readouterr().out
+        assert "missing-diagram.svg" in out
+
+    def test_pure_function_no_mutation(self):
+        from obsidian_to_substack.image_assets import referenced_svgs
+
+        original = "![[a.svg]]\n\n![[b.svg]]\n"
+        text_copy = original
+        result = referenced_svgs(text_copy)
+        assert text_copy == original
+        assert result == ["a.svg", "b.svg"]
