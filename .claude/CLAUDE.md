@@ -70,7 +70,7 @@ unverified on their target platforms.
   headed to GitHub and planning is local workflow state. GSD commit steps on planning
   files are expected no-ops.
 
-- **Testing**: 284 tests currently pass (`uv run pytest -q`); new defects get pinned by
+- **Testing**: 403 tests currently pass (`uv run pytest -q`); new defects get pinned by
   tests, per the author's "fixes + automated guards" decision. This count goes stale —
   run the suite rather than trusting the number.
 
