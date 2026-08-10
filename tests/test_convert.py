@@ -4,6 +4,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -16,6 +17,7 @@ from obsidian_to_substack.convert import (
     convert_directory,
     copy_html_to_clipboard,
     copy_title_to_primary,
+    main,
     slugify,
 )
 
@@ -671,3 +673,140 @@ class TestDryRunSvgCount:
         result = convert_article(article, str(tmp_path / "out"), dry_run=True)
 
         assert result["svg_count"] == 2
+
+
+class TestCopyWarningGate:
+    """D-01: --copy refuses when preflight warned, --force overrides.
+
+    Measured this session against 629eb2a on a real article: --copy printed
+    six [DIAG-02] preflight warnings, then wrote the body to the clipboard
+    anyway. Neither preflight nor the reporting path was defective -- the
+    defect was that the CLI ignored its own findings. This class pins the
+    refusal and its escape hatch.
+
+    Every case drives main() through monkeypatch.setattr(sys, "argv", ...),
+    patching shutil.which to report xclip present and subprocess.run to
+    record (not perform) the clipboard writes -- CLIPBOARD via
+    copy_html_to_clipboard, PRIMARY via copy_title_to_primary. A refusal
+    means subprocess.run is never called at all, which covers both
+    selections in one assertion.
+    """
+
+    def _write_warning_article(self, tmp_path: Path) -> Path:
+        # The embed resolves nowhere, so replace_image_embeds emits
+        # <img src="nope.png"> and preflight's _check_images raises
+        # missing_image (DIAG-02).
+        source = tmp_path / "article.md"
+        source.write_text(
+            "# My Article\n\n![[nope.png]]\n\nBody text.\n", encoding="utf-8"
+        )
+        return source
+
+    def _write_clean_article(self, tmp_path: Path) -> Path:
+        # Mirrors TestFidelityWiring._write's shape: the sole H1 becomes the
+        # resolved title and strip_duplicate_title removes it, so neither
+        # duplicate_title nor slug_title fires.
+        source = tmp_path / "article.md"
+        source.write_text(
+            "# My Article\n\nSome body text.\n", encoding="utf-8"
+        )
+        return source
+
+    def _argv(self, tmp_path: Path, output_dir: Path, force: bool = False) -> list[str]:
+        argv = [
+            "obsidian-to-substack",
+            str(tmp_path),
+            "--file", "article.md",
+            "--output-dir", str(output_dir),
+            "--copy",
+        ]
+        if force:
+            argv.append("--force")
+        return argv
+
+    def test_warning_fixture_actually_warns(self, tmp_path):
+        # Guards every case below: if this fixture ever stopped warning, the
+        # gate assertions would pass for the wrong reason -- there would be
+        # nothing to refuse, not a working refusal.
+        source = self._write_warning_article(tmp_path)
+        result = convert_article(str(source), str(tmp_path / "out"))
+        assert result["warnings"]
+
+    def test_clean_fixture_has_no_warnings(self, tmp_path):
+        # Same reasoning, other direction: if this fixture ever started
+        # warning, "unchanged on a clean run" would be pinning nothing.
+        source = self._write_clean_article(tmp_path)
+        result = convert_article(str(source), str(tmp_path / "out"))
+        assert result["warnings"] == []
+
+    def test_copy_refuses_on_warning_fixture(self, tmp_path, monkeypatch, capsys):
+        self._write_warning_article(tmp_path)
+        monkeypatch.setattr(sys, "argv", self._argv(tmp_path, tmp_path / "out"))
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/xclip"),
+            patch("subprocess.run") as mock_run,
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 1
+        # The refusal must write neither CLIPBOARD nor PRIMARY.
+        mock_run.assert_not_called()
+
+        captured = capsys.readouterr()
+        assert re.search(r"\d+", captured.err)
+        assert "--force" in captured.err
+        # format_result_lines already printed the individual warnings above
+        # via preflight.report; the refusal must not re-print them, and it
+        # must not print the clipboard success line either.
+        assert "Body on the clipboard" not in captured.out
+
+    def test_force_overrides_the_refusal(self, tmp_path, monkeypatch, capsys):
+        self._write_warning_article(tmp_path)
+        monkeypatch.setattr(
+            sys, "argv", self._argv(tmp_path, tmp_path / "out", force=True)
+        )
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/xclip"),
+            patch("subprocess.run") as mock_run,
+        ):
+            main()  # must not raise SystemExit
+
+        # Clipboard then primary selection.
+        assert mock_run.call_count == 2
+
+        captured = capsys.readouterr()
+        assert re.search(r"\d+", captured.out)
+        assert "warning" in captured.out.lower()
+
+    def test_copy_on_clean_fixture_is_unchanged(self, tmp_path, monkeypatch, capsys):
+        self._write_clean_article(tmp_path)
+        monkeypatch.setattr(sys, "argv", self._argv(tmp_path, tmp_path / "out"))
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/xclip"),
+            patch("subprocess.run") as mock_run,
+        ):
+            main()  # must not raise SystemExit
+
+        assert mock_run.call_count == 2
+
+        captured = capsys.readouterr()
+        assert "Body on the clipboard" in captured.out
+        assert "Title on the primary selection" in captured.out
+
+    def test_plain_run_without_copy_stays_exit_zero(self, tmp_path, monkeypatch):
+        # Pins the "plain run stays exit 0" non-goal: no --copy at all on
+        # the warning fixture must not raise SystemExit.
+        self._write_warning_article(tmp_path)
+        argv = [
+            "obsidian-to-substack",
+            str(tmp_path),
+            "--file", "article.md",
+            "--output-dir", str(tmp_path / "out"),
+        ]
+        monkeypatch.setattr(sys, "argv", argv)
+
+        main()  # must not raise SystemExit
