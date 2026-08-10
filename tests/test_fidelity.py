@@ -352,6 +352,116 @@ class TestCorpusNoiseCategories:
         assert "title" in report.reasons_used
 
 
+class TestRelocatedFootnoteDefinitions:
+    """A footnote definition moves to the end of the document when rendered.
+
+    `SequenceMatcher` can only align in order, so a definition written in the
+    middle of the source arrives after text that followed it and one of the two
+    runs reads as deleted. The fixture's footnotes all sit at end-of-file, which
+    is why nothing caught this — and the corpus has exactly one footnoted
+    article, whose definition is also at the end.
+    """
+
+    def test_mid_document_definition_is_not_reported(self):
+        source = (
+            "Intro prose with a footnote.[^1]\n"
+            "\n"
+            "[^1]: The footnote body written the canonical way.\n"
+            "\n"
+            "A final paragraph that plainly survives into the output.\n"
+        )
+
+        report = compare(source, _render(source))
+
+        assert report.is_clean, f"false positive: {report.unaccounted}"
+        assert "footnote_definition" in report.reasons_used
+
+    def test_mid_document_definition_in_the_vault_hyphen_form(self):
+        # The form Obsidian sources actually write, normalized by the pipeline
+        # before rendering. Fidelity re-derives the pattern rather than calling
+        # normalize_footnote_definitions, so it has to know both shapes itself.
+        source = (
+            "Intro prose with a footnote.[^1]\n"
+            "\n"
+            "[^1] - The footnote body written the Obsidian way.\n"
+            "\n"
+            "A final paragraph that plainly survives into the output.\n"
+        )
+
+        report = compare(source, _render(source))
+
+        assert report.is_clean, f"false positive: {report.unaccounted}"
+        assert "footnote_definition" in report.reasons_used
+
+    def test_continuation_lines_are_reconciled_too(self):
+        source = (
+            "Intro prose with a footnote.[^long]\n"
+            "\n"
+            "[^long]: The opening sentence of the definition.\n"
+            "    A continuation line indented beneath it.\n"
+            "\n"
+            "A final paragraph that plainly survives into the output.\n"
+        )
+
+        report = compare(source, _render(source))
+
+        assert report.is_clean, f"false positive: {report.unaccounted}"
+
+    def test_a_definition_that_never_arrives_is_still_reported(self):
+        # The guard against fixing the false positive by going blind. Sitting
+        # on a definition line must not excuse a token on its own — a footnote
+        # body the renderer genuinely dropped sits on one too, and that is the
+        # loss this module exists to catch.
+        source = (
+            "Intro prose with a footnote.[^1]\n"
+            "\n"
+            "[^1]: Words that the renderer swallowed entirely.\n"
+        )
+        html = "<html><body><p>Intro prose with a footnote.</p></body></html>"
+
+        report = compare(source, html)
+
+        assert not report.is_clean
+        lost = " ".join(removal.text for removal in report.unaccounted)
+        assert "swallowed" in lost
+
+    def test_an_end_of_document_definition_still_reports_clean(self):
+        # The case that already worked. It has to keep working.
+        source = (
+            "Intro prose with a footnote.[^1]\n"
+            "\n"
+            "A final paragraph that plainly survives into the output.\n"
+            "\n"
+            "[^1]: The footnote body written the canonical way.\n"
+        )
+
+        report = compare(source, _render(source))
+
+        assert report.is_clean, f"false positive: {report.unaccounted}"
+
+    def test_prose_after_a_definition_is_still_compared(self):
+        # The definition must not swallow the rest of the document. If the
+        # trailing paragraph really vanished, that has to still be reported.
+        source = (
+            "Intro prose with a footnote.[^1]\n"
+            "\n"
+            "[^1]: The footnote body written the canonical way.\n"
+            "\n"
+            "A trailing paragraph the renderer lost completely.\n"
+        )
+        html = (
+            "<html><body><p>Intro prose with a footnote.</p>"
+            '<ol><li id="fn:1"><p>The footnote body written the canonical '
+            "way.</p></li></ol></body></html>"
+        )
+
+        report = compare(source, html)
+
+        assert not report.is_clean
+        lost = " ".join(removal.text for removal in report.unaccounted)
+        assert "trailing" in lost
+
+
 class TestCoverage:
     """A clean report means nothing without knowing how much was compared."""
 

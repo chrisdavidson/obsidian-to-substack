@@ -440,6 +440,31 @@ class TestFidelityWiring:
         assert fidelity_warnings, "the pipeline lost prose and said nothing"
         assert "up" in fidelity_warnings[0].message
 
+    def test_a_mid_document_footnote_definition_does_not_warn(self, tmp_path):
+        # Rendering moves the definition to the end of the document, so an
+        # in-order aligner sees the trailing paragraph and the definition swap
+        # places. Reported as vanished text, this blocks --copy on a correctly
+        # written article and pushes the author onto --force.
+        source = self._write(
+            tmp_path,
+            "# A Title\n"
+            "\n"
+            "Intro prose with a footnote.[^1]\n"
+            "\n"
+            "[^1] - The footnote body written the Obsidian way.\n"
+            "\n"
+            "A final paragraph that plainly survives.\n",
+        )
+
+        result = convert_article(str(source), str(tmp_path / "out"))
+
+        # Guard the fixture: if the definition stopped reaching the output, the
+        # absence of a warning would be a failure dressed as a pass.
+        html = Path(result["html_path"]).read_text(encoding="utf-8")
+        assert "written the Obsidian way" in html, "fixture invalid: body missing"
+
+        assert not [w for w in result["warnings"] if w.check == "fidelity_loss"]
+
     def test_table_text_does_not_warn_when_it_reached_the_cells(self, tmp_path):
         # Tables are replaced by images, so their prose leaves the HTML. It
         # must be accounted for by the extracted rows, not reported.
