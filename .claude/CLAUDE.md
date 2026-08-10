@@ -28,21 +28,39 @@ comment content) reached a live published post without the author noticing on re
 
 ### Current State
 
-**v1.0 shipped 2026-08-08** — 21/21 requirements, audit passed. The core value is met:
-tables, SVG diagrams, images, wikilinks, formatting and footnotes all survive into a
-Substack draft, verified by live paste rather than inference. The fix history that once
-lived only in the author's memory is now `docs/FINDINGS-MANUAL.md`, regenerated into
-`docs/FINDINGS.md` by `tools/substack_diff`.
+**v1.3 shipped 2026-08-10**, the current release. Four public releases so far, each one
+tagged with a wheel and sdist attached, none of them on PyPI:
 
-No milestone is active, and none is warranted — the 2026-08-09 altitude check pruned the
-Backlog to a single live item (a source-to-output fidelity diff, `/gsd-quick`-sized).
-**Quick tasks, not the phase pipeline, is now a recorded decision**, not an accident:
-`.planning/phases/` will not exist and audits verify from primary evidence.
+- **v1.0 (2026-08-08)** — 21/21 requirements, audit passed. Core Value 1 met: tables, SVG
+  diagrams, images, wikilinks, formatting and footnotes all survive into a Substack draft,
+  verified by live paste rather than inference.
+- **v1.1 (2026-08-09)** — Core Value 2 gets a default-on guard, the `fidelity_loss`
+  preflight check, at a measured baseline of 46/46 clean and 93.8% word coverage.
+- **v1.2 (2026-08-10)** — the gate. A run that knows its output is broken can no longer
+  end by reporting success: `--copy` refuses on any preflight warning, `--force` is the
+  stated escape hatch.
+- **v1.3 (2026-08-10)** — `--copy` reaches macOS and Windows. See the Platform constraint
+  below before describing either as working.
+
+The fix history that once lived only in the author's memory is `docs/FINDINGS-MANUAL.md`,
+regenerated into `docs/FINDINGS.md` by `tools/substack_diff`.
+
+No milestone is active and none is warranted — the ROADMAP Backlog has been **empty since
+2026-08-09**, and everything shipped since arrived as a quick task rather than from a
+queue. **Quick tasks, not the phase pipeline, is a recorded decision**, not an accident:
+`.planning/phases/` will not exist and audits verify from primary evidence. What would
+change this is evidence — a report from a macOS or Windows user, a defect in a live paste
+— not planning.
 
 Three limitations are recorded rather than absorbed: the title is placed by hand (Substack
 never fills its title field from pasted body content), image alignment is not controllable
 (Substack centres every image itself), and the macOS/Windows `--copy` backends are
 unverified on their target platforms.
+
+**A standing pattern worth knowing before you change a code path:** the tool's
+self-description does not travel with it. `__version__` sat at `1.0.0` through two
+releases, and a help string has now gone stale twice — `--svg-dir` at `96ff451`,
+`--copy` at v1.3. Nothing in the suite asserts on either, by choice.
 
 ### Constraints
 
