@@ -7,6 +7,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-08-10
+
+`--copy` reaches macOS and Windows. Built from the documented mechanisms and
+checked byte for byte — not proven on either platform, and not claimed to be.
+
 ### Added
 
 - **`--copy` works on macOS and Windows.** It was Linux/X11 only; each platform
@@ -33,6 +38,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   independent selections. macOS and Windows have one clipboard and it holds the
   body, so writing the title there would destroy the article just placed. Those
   platforms print the title for you to copy by hand instead.
+
+### Fixed
+
+- `--copy`'s own `--help` text still said "requires xclip" after the backends
+  landed, and `__version__` had been stuck at `1.0.0` since the first release.
+  Both are self-description rather than behaviour, which is why two releases
+  went by without either being noticed.
 
 ### Not verified
 
@@ -258,6 +270,7 @@ Recorded rather than absorbed — each was established by hand against a real dr
   hand-off additionally needs a browser that honours middle-click paste of the
   primary selection.
 
+[1.3.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.3
 [1.2.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.2
 [1.1.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.1
 [1.0.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.0
