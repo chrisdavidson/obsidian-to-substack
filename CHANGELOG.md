@@ -48,7 +48,7 @@ are checked byte for byte against a real converted article, including that the
 macOS hex round-trips exactly and that the CF_HTML offsets land on the fragment.
 That is not the same as a clipboard being written, and it is not claimed to be.
 
-402 tests pass, up from 368.
+403 tests pass, up from 368.
 
 ## [1.2.0] — 2026-08-10
 
