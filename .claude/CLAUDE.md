@@ -12,8 +12,11 @@ structure, SVG diagrams aren't supported at all, and Obsidian's `![[embed]]` and
 It serves its author, publishing to <https://foxglenacres.substack.com> from
 `~/Obsidian/BrainBank/4_Archive/Published Articles`. It serves exactly one person, and as
 of 2026-08-09 that is a decision rather than a stage — release to other Obsidian writers is
-**closed, not deferred**. The code is public; the audience is not. Do not propose packaging,
-PyPI or cross-platform work without a named person asking for it.
+**closed, not deferred**. The code is public; the audience is not. Do not propose packaging
+or PyPI work without a named person asking for it. **Cross-platform `--copy` was re-entered
+on 2026-08-10** — the author asked for macOS and Windows in those words, which is exactly
+the named-person condition this rule sets. The gate worked as designed; it is not a licence
+to reopen the rest.
 
 **Core Value 1 — Transport (satisfied by v1.0):** Tables, SVG diagrams, and charts survive
 the move from Obsidian into a Substack post **without manual repair in the composer.**
@@ -38,7 +41,8 @@ Backlog to a single live item (a source-to-output fidelity diff, `/gsd-quick`-si
 
 Three limitations are recorded rather than absorbed: the title is placed by hand (Substack
 never fills its title field from pasted body content), image alignment is not controllable
-(Substack centres every image itself), and `--copy` is Linux/X11 only.
+(Substack centres every image itself), and the macOS/Windows `--copy` backends are
+unverified on their target platforms.
 
 ### Constraints
 
@@ -52,10 +56,13 @@ never fills its title field from pasted body content), image alignment is not co
   paths, leaked `%%` comments, inline HTML drawn into PNGs were all visible in
   `article.html`. Reach for the cheap mechanical check first
 
-- **Platform**: `--copy` shells out to `xclip`, so clipboard support is Linux/X11 only. The
-  audience is one person, so this stands — but the 2026-08-09 public release means a
-  non-Linux downloader can now reach the failure, so the README carries a platform note.
-  Accepted failure mode, recorded rather than fixed
+- **Platform**: `--copy` dispatches per platform in `clipboard.py` — `xclip` on Linux/X11,
+  `osascript` on macOS, PowerShell CF_HTML on Windows (2026-08-10, author's request).
+  **Only the Linux path is verified.** The other two have never run on their target
+  platforms; the author has neither machine, so unlike Substack's rendering there is no
+  human who can settle them. Their tests prove the right bytes reach the right tool and
+  nothing more — do not describe them as working. The title hand-off stays Linux-only by
+  design: macOS and Windows have one clipboard and it holds the body
 
 - **Secrets**: `*.key` is gitignored
 
@@ -92,8 +99,9 @@ uv run python -m tools.substack_diff --all        # regenerate docs/FINDINGS.md
 uv run python -m tools.fidelity_sweep [--show]    # corpus fidelity census
 ```
 
-External surfaces: `xclip` for `--copy` (Linux/X11 only — body to CLIPBOARD as
-`text/html`, resolved title to PRIMARY); the Obsidian vault, read-only and outside the
+External surfaces: the clipboard, via one native tool per platform (`xclip` on Linux —
+body to CLIPBOARD as `text/html`, resolved title to PRIMARY; `osascript` on macOS;
+PowerShell on Windows, both body-only); the Obsidian vault, read-only and outside the
 repo; and Substack itself, which has **no API for rendering checks** — that is the binding
 constraint on the whole project.
 <!-- GSD:stack-end -->

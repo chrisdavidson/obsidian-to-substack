@@ -14,12 +14,18 @@ the Substack composer.
 - Python 3.11+
 - [Cairo](https://www.cairographics.org/) — for SVG rasterization (via CairoSVG;
   falls back to Inkscape if available)
-- `xclip` — only for `--copy` on Linux
+- A clipboard tool for `--copy`, depending on your platform:
+  - **Linux/X11** — `xclip`
+  - **macOS** — `osascript` (ships with macOS)
+  - **Windows** — PowerShell (ships with Windows)
 
-> **Platform note.** Conversion itself is cross-platform, but `--copy` is **Linux/X11
-> only** — it shells out to `xclip` and will fail immediately on macOS or Windows. The tool
-> is built for and used by a single Linux author; everything else works, but you will need
-> to copy `article.html` by hand. See [Known limitations](#known-limitations).
+> **Platform note.** Conversion is cross-platform and always has been. `--copy` now has a
+> backend for all three platforms, but they are **not equally proven**: the Linux path has
+> been used against a real Substack composer many times, while the macOS and Windows paths
+> have never been run on their target platforms — the author has neither machine. They are
+> tested only in the sense that the right bytes provably reach the right tool. If one
+> fails, `article.html` is still written and can be copied by hand. See
+> [Known limitations](#known-limitations).
 
 ## Install
 
@@ -72,19 +78,28 @@ A typical run — convert one article and put it on the clipboard:
 obsidian-to-substack ~/vault/articles --file my-post.md --copy
 ```
 
-That loads both X11 selections, so pasting into Substack takes two gestures:
+Substack never fills its title field from pasted body content, so the title
+always has to be placed by hand. How much the tool can help depends on how many
+clipboards your platform has.
+
+**On Linux/X11** there are two independent selections, so one run covers both
+and pasting takes two gestures:
 
 - click into the **body** and press `Ctrl+V` — the article, copied as
   `text/html` so the rich-text editor keeps the formatting
 - click into the **title field** and **middle-click** — the article's title as
   plain text
 
-Substack never fills its title field from pasted body content, so the title has
-to be placed by hand. Putting it on the primary selection rather than the
-clipboard means one run covers both, instead of the title copy clobbering the
-article. If middle-click paste is disabled in your browser, the title is also
-printed on the `Title:` line — but paste the body first, or selecting that text
-will replace the clipboard.
+Putting the title on the primary selection rather than the clipboard is what
+lets one run do both, instead of the title copy clobbering the article. If
+middle-click paste is disabled in your browser, the title is also printed on the
+`Title:` line — but paste the body first, or selecting that text will replace
+the clipboard.
+
+**On macOS and Windows** there is one clipboard and the body takes it. The title
+is printed on the `Title:` line for you to copy by hand — writing it to the
+clipboard would destroy the article that was just put there, which is worse than
+not helping.
 
 If the preflight check above found anything to warn about, `--copy` refuses to
 write to either selection: it exits non-zero and prints the warning count with
@@ -103,7 +118,7 @@ legitimate titles.
 | `--file` | — | Process a single `.md` file instead of the whole directory |
 | `--svg-dir` | `<directory>/svg/<slug>/` if it exists, else `<directory>/svg/` | Override the SVG source directory |
 | `--dpi` | `192` | PNG export resolution |
-| `--copy` | off | Body HTML to the clipboard, title to the primary selection (requires `xclip`). Refuses (exit 1, writes nothing) if preflight found a warning on the article — see `--force` |
+| `--copy` | off | Body HTML to the clipboard. On Linux the title also goes to the primary selection; on macOS and Windows it is printed instead, since those have only one clipboard. Refuses (exit 1, writes nothing) if preflight found a warning on the article — see `--force` |
 | `--force` | off | Copy anyway when preflight warned; only meaningful with `--copy` |
 | `--open` | off | Open the result in your browser |
 | `--dry-run` | off | Report what would happen without writing anything, including which embedded image references will not resolve and will paste broken |
@@ -130,7 +145,7 @@ spreadsheet or reuse elsewhere.
   work too, including percent-encoded and stale vault-relative paths.
 - **A leading `# Title`** — dropped when it is the document's only H1, since
   Substack renders its own title above the body. Its text becomes the resolved
-  title, printed by the CLI and placed on the primary selection.
+  title, printed by the CLI and, on Linux, placed on the primary selection.
 - **Footnotes** — `[^1]` references and their definitions survive the paste,
   superscript marker and text both. Obsidian sources often write a definition
   as `[^1] - text`, which Markdown does not recognise (it wants `[^1]: text`);
@@ -162,8 +177,18 @@ has no rendering API, so every claim here was checked by hand:
   be removed.
 - **Image alignment is not controllable.** Substack centres every image itself,
   whatever markup you send. There is no way to left- or right-align one.
-- **`--copy` is Linux/X11 only**, and the title hand-off additionally needs a
-  browser that honours middle-click paste of the primary selection.
+- **The macOS and Windows clipboard paths are unverified on their targets.**
+  They are built from the documented mechanisms — `osascript`'s HTML clipboard
+  flavour and Windows' CF_HTML format — and their payloads are checked byte for
+  byte by the test suite, but nobody has run either on the platform it is for.
+  This is the project's verification split taken one step further: Substack's
+  rendering needs a human to paste and report, and the author can be that human,
+  but for these two backends there is nobody. Reports welcome.
+- **The two-gesture hand-off is Linux/X11 only.** It needs two independent
+  selections, which macOS and Windows do not have, and additionally a browser
+  that honours middle-click paste of the primary selection. On the other two
+  platforms the body takes the clipboard and the title is printed for you to
+  copy by hand.
 
 ## Non-goals
 
@@ -175,7 +200,7 @@ manage, and an external publish on every run. Full evidence is in
 ## Development
 
 ```bash
-uv run pytest                                    # 368 tests, 96% coverage
+uv run pytest                                    # 402 tests, 96% coverage
 uv run pytest --cov=src --cov-report=term-missing
 ```
 
