@@ -642,6 +642,19 @@ def main() -> None:
                 # warnings above, via preflight.report — this message names
                 # only the count and the escape hatch, not the warnings
                 # themselves.
+                #
+                # The flush is load-bearing, not tidiness. This message says
+                # "(see above)" and goes to stderr, which is unbuffered;
+                # stdout is block-buffered whenever it is not a tty. Without
+                # the flush, a redirected or piped run (`> run.log`, `| tee`)
+                # emits the refusal *before* the warnings it points at — the
+                # message misdirects in precisely the runs an author keeps and
+                # re-reads. Measured on the real vault article: refusal on
+                # line 4, warnings from line 9. Pinned by
+                # test_refusal_flushes_stdout_before_the_stderr_message, which
+                # records both streams into one ordered log because capsys
+                # buffers them separately and cannot see the interleaving.
+                sys.stdout.flush()
                 print(
                     f"Error: --copy refused — {warning_count} preflight "
                     f"warning(s) on {selected['slug']!r} (see above). "
