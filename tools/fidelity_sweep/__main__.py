@@ -104,15 +104,29 @@ def find_articles(vault: Path) -> Corpus:
     selection defines the fidelity baseline, they were silently inflating its
     denominator.
 
-    **The accepted cost, and it is real.** Three genuine articles have no
-    frontmatter (`equipment-qualification-taxonomy`, `productive and
-    efficient`, `working with procurement?` -- the census's three true
-    `slug_title` warnings) and this rule does not see them. Accepted because it
-    is self-correcting: the fix for those three is one `title:` line each in
-    the vault, which re-admits them automatically. The part that is NOT
-    self-correcting and is worth knowing: while they sit outside, every article
-    in the corpus has frontmatter, so **`slug_title` is a check no sweep can
-    trip.** Do not read a census with zero `slug_title` findings as good news.
+    **The cost, measured against the real vault rather than predicted.** The
+    first run of this rule skipped six files: five LinkedIn companions (the
+    census's four plus `okr-taxonomy-linkedin`, written since) and **one
+    genuine article** -- `Data, Information, Knowledge, and Wisdom one data
+    source at a time.md`, 2,344 words, which simply has no frontmatter block.
+    That one is a real loss from the census and the fix is one `title:` line in
+    the vault, which re-admits it automatically.
+
+    Two predictions this rule was planned against turned out wrong, and the
+    corrections are worth keeping because both were in the same direction --
+    assuming from a record instead of measuring:
+
+    * The three true `slug_title` articles (`equipment-qualification-taxonomy`,
+      `productive and efficient`, `working with procurement?`) were expected to
+      fall out. They did not. The 2026-08-10 census recorded them as having no
+      frontmatter `title:` *key*, which is not the same as no frontmatter
+      block; all three have one and all three are in the corpus. So
+      **`slug_title` remains censusable** -- the check does not go blind.
+    * The excluded set was expected to be four companion posts and nothing
+      else. It is five companions and one real article.
+
+    This is why the skipped list is printed rather than counted. The single
+    real casualty was found by reading it on the first run.
 
     Unreadable files are kept rather than dropped, for the same fail-closed
     reason `has_frontmatter` includes a malformed header: a file that vanishes

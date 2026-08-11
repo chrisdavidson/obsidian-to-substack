@@ -35,8 +35,8 @@ tagged with a wheel and sdist attached, none of them on PyPI:
   diagrams, images, wikilinks, formatting and footnotes all survive into a Substack draft,
   verified by live paste rather than inference.
 - **v1.1 (2026-08-09)** — Core Value 2 gets a default-on guard, the `fidelity_loss`
-  preflight check, at a measured baseline of 46/46 clean and 93.8% word coverage — see
-  the denominator caveat below before quoting that figure.
+  preflight check. Its original baseline (46/46 clean, 93.8% coverage) was restated
+  2026-08-11 once the corpus was defined: **42/42 clean, 92.8%, 6 skipped.**
 - **v1.2 (2026-08-10)** — the gate. A run that knows its output is broken can no longer
   end by reporting success: `--copy` refuses on any preflight warning, `--force` is the
   stated escape hatch.
@@ -274,19 +274,25 @@ frontmatter splitting and image rewriting, so comparing against it would exempt 
 those stages dropped) plus the table rows captured before `replace_tables_with_images`
 consumed them.
 
-`tools/fidelity_sweep` runs it across the corpus. Baseline 2026-08-09: **46/46 clean, 0
-unaccounted removals, 93.8% word coverage.** Always quote the coverage beside the zero —
-every authorized span withholds words, so a check that authorized everything reads clean
-too. The corpus currently contains no `%%` at all, so a corpus-wide probe proves nothing
-about the comment path; validate that one by injecting a trigger into a temp copy.
+`tools/fidelity_sweep` runs it across the corpus. Baseline 2026-08-11: **42/42 clean, 0
+unaccounted removals, 92.8% word coverage, 6 files skipped.** Always quote the coverage
+beside the zero — every authorized span withholds words, so a check that authorized
+everything reads clean too. The corpus currently contains no `%%` at all, so a corpus-wide
+probe proves nothing about the comment path; validate that one by injecting a trigger into a
+temp copy.
 
-**Quote the denominator caveat with that number.** The sweep selects the corpus with
-`rglob("*.md")`, so "46 articles" includes at least four companion LinkedIn promo posts
-(139–480 words, no frontmatter) that sit inside their parent article's directory and were
-never going to be pasted into Substack. They convert clean, so the baseline is not invalid —
-but it is measured over a set that is not the set of things this tool converts, and a corpus
-picked by file extension keeps acquiring companions as the author writes them. Defining the
-rule is an open backlog item.
+**The corpus is defined by frontmatter presence**, not by file extension (`260811-crp`).
+The previous baseline — 46/46 at 93.8% — was measured over a set selected by `rglob("*.md")`
+that included companion LinkedIn promo posts, so its denominator was never the set of things
+this tool converts. Coverage moved 93.8% → 92.8% because the companions are short and
+header-less and were inflating it.
+
+**One real article is outside the corpus and should not be.** `Data, Information, Knowledge,
+and Wisdom one data source at a time.md` (2,344 words) has no frontmatter block, so the rule
+skips it. The fix is one `title:` line in the vault and it re-admits itself; until then the
+census covers 42 of 43 real articles. The other five skips are genuine companions. **Read the
+skipped list on every run** — that single casualty was found by reading it, and it is the
+reason the list is printed rather than counted.
 
 **The pipeline and Obsidian disagree about which embeds resolve** — a known divergence,
 recorded rather than fixed. Obsidian resolves `![[embed]]` vault-wide including the central
