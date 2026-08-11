@@ -81,13 +81,38 @@ def test_malformed_frontmatter_is_still_an_article(tmp_path: Path) -> None:
     assert corpus.skipped == []
 
 
-def test_empty_frontmatter_block_is_still_an_article(tmp_path: Path) -> None:
-    """A block the author opened and left empty is a block they wrote."""
-    _write(tmp_path / "empty-header.md", "---\n---\n\nReal prose.\n")
+def test_a_blank_frontmatter_block_is_still_an_article(tmp_path: Path) -> None:
+    """A header the author opened and left blank is a header they wrote.
+
+    `parse_frontmatter` yields `{}` here -- YAML parses it to `None` -- which
+    is the same empty dict a file with no header at all produces. The
+    delimiter rule keeps it, which is the point.
+    """
+    _write(tmp_path / "blank-header.md", "---\n\n---\n\nReal prose.\n")
 
     corpus = find_articles(tmp_path)
 
-    assert [p.name for p in corpus.articles] == ["empty-header.md"]
+    assert [p.name for p in corpus.articles] == ["blank-header.md"]
+
+
+def test_a_bare_delimiter_pair_is_not_frontmatter(tmp_path: Path) -> None:
+    """`---\\n---` with nothing between it is not a header, here or upstream.
+
+    Written as an assumption in the first cut of these tests and corrected
+    against the shared pattern, which requires at least one line between the
+    delimiters. Recorded rather than quietly dropped, because the reasoning is
+    the load-bearing part: the sweep agreeing with `frontmatter.py` matters
+    more than either answer taken alone. `parse_frontmatter` treats this file
+    as having no frontmatter, so a corpus rule that treated it as an article
+    would put the sweep and the pipeline into disagreement about what a header
+    is -- the exact class of divergence this project keeps paying for.
+    """
+    _write(tmp_path / "bare-pair.md", "---\n---\n\nProse.\n")
+
+    corpus = find_articles(tmp_path)
+
+    assert corpus.articles == []
+    assert [p.name for p in corpus.skipped] == ["bare-pair.md"]
 
 
 def test_a_delimiter_below_the_first_line_does_not_count(tmp_path: Path) -> None:

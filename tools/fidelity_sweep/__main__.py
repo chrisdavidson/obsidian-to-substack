@@ -27,10 +27,11 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 from obsidian_to_substack.convert import convert_article
 from obsidian_to_substack.fidelity import FidelityReport, compare
-from obsidian_to_substack.frontmatter import parse_frontmatter
+from obsidian_to_substack.frontmatter import FRONTMATTER_PATTERN, parse_frontmatter
 from obsidian_to_substack.render_html import extract_leading_title
 from obsidian_to_substack.table_handler import extract_tables
 
@@ -53,13 +54,84 @@ class ArticleResult:
         return len(self.report.unaccounted) if self.report else 0
 
 
-def find_articles(vault: Path) -> list[Path]:
-    """Every Markdown article in the corpus, in a stable order.
+class Corpus(NamedTuple):
+    """What the sweep will measure, and what it left out.
 
-    Both corpus layouts are covered: a bare `article.md` and the newer
-    directory-with-`svg/` form, whose Markdown still sits at the top level.
+    `skipped` is returned rather than discarded so the census can say how many
+    files it declined and why. A corpus that silently narrows is the same
+    failure class as the one `260811-dx4` fixed -- a number that under-reports
+    without saying so -- and it would be a poor trade to introduce one while
+    fixing a denominator.
     """
-    return sorted(p for p in vault.rglob("*.md") if p.is_file())
+
+    articles: list[Path]
+    skipped: list[Path]
+
+
+def has_frontmatter(text: str) -> bool:
+    """Did the author write a frontmatter block at the top of this file?
+
+    Deliberately NOT `parse_frontmatter(text)[0]`. That function returns
+    `({}, text)` for *both* "no frontmatter" and "frontmatter present but the
+    YAML is malformed" -- it collapses the two because for its own purpose the
+    outcomes are identical. They are not identical here. An article whose
+    header is broken is still an article the author wrote a header for, and
+    dropping it from the census would excuse this tool from measuring exactly
+    the kind of file it should be measured against.
+
+    So the question is about the delimiter block, not about the parse. The
+    pattern is imported rather than re-derived, per the convention that a
+    transform and a check making the same judgement share the rule: both are
+    asking "is there a frontmatter block here?" and there is one right answer.
+    (This is not the `fidelity.py` exception -- that module refuses to share
+    because the thing under test is what a transform deleted, so sharing would
+    manufacture agreement. Nothing is under test here.)
+    """
+    return FRONTMATTER_PATTERN.match(text) is not None
+
+
+def find_articles(vault: Path) -> Corpus:
+    """The corpus: every Markdown file whose author wrote a frontmatter block.
+
+    Both layouts are covered: a bare `article.md` and the newer
+    directory-with-`svg/` form, whose Markdown still sits at the top level.
+
+    **Why frontmatter and not the file extension.** The 2026-08-10 preflight
+    census found that 4 of 12 corpus warnings came from companion LinkedIn
+    promo posts -- short, header-less, and sitting *inside* their parent
+    article's own directory, which is why no path rule could separate them.
+    They were never going to be pasted into Substack, and because this same
+    selection defines the fidelity baseline, they were silently inflating its
+    denominator.
+
+    **The accepted cost, and it is real.** Three genuine articles have no
+    frontmatter (`equipment-qualification-taxonomy`, `productive and
+    efficient`, `working with procurement?` -- the census's three true
+    `slug_title` warnings) and this rule does not see them. Accepted because it
+    is self-correcting: the fix for those three is one `title:` line each in
+    the vault, which re-admits them automatically. The part that is NOT
+    self-correcting and is worth knowing: while they sit outside, every article
+    in the corpus has frontmatter, so **`slug_title` is a check no sweep can
+    trip.** Do not read a census with zero `slug_title` findings as good news.
+
+    Unreadable files are kept rather than dropped, for the same fail-closed
+    reason `has_frontmatter` includes a malformed header: a file that vanishes
+    from the census leaves nothing behind to notice.
+    """
+    articles: list[Path] = []
+    skipped: list[Path] = []
+
+    for path in sorted(p for p in vault.rglob("*.md") if p.is_file()):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            logger.debug("could not read %s; keeping it in the corpus", path)
+            articles.append(path)
+            continue
+
+        (articles if has_frontmatter(text) else skipped).append(path)
+
+    return Corpus(articles=articles, skipped=skipped)
 
 
 def sweep_article(source_path: Path, output_root: Path) -> ArticleResult:
@@ -95,7 +167,7 @@ def sweep_article(source_path: Path, output_root: Path) -> ArticleResult:
     return ArticleResult(name=source_path.name, report=report)
 
 
-def summarize(results: list[ArticleResult]) -> str:
+def summarize(results: list[ArticleResult], skipped_count: int = 0) -> str:
     """A counts-only census. Safe to write to a file — carries no article prose."""
     converted = [r for r in results if r.error is None]
     failed = [r for r in results if r.error is not None]
@@ -110,6 +182,10 @@ def summarize(results: list[ArticleResult]) -> str:
         "# Fidelity sweep",
         "",
         f"- Articles found: {len(results)}",
+        # Stated even when zero. The corpus is now a filtered set, and a census
+        # that shrank without saying so would read as articles having vanished
+        # -- which is the exact misreading this line exists to prevent.
+        f"- Skipped (no frontmatter, not articles): {skipped_count}",
         f"- Converted: {len(converted)}",
         f"- Conversion failures: {len(failed)}",
         f"- Clean: {len(converted) - len(dirty)}",
@@ -177,7 +253,8 @@ def main() -> None:
         print(f"Vault not found: {args.vault}", file=sys.stderr)
         raise SystemExit(2)
 
-    articles = find_articles(args.vault)
+    corpus = find_articles(args.vault)
+    articles = corpus.articles
     if args.article:
         needle = args.article.casefold()
         articles = [p for p in articles if needle in p.name.casefold()]
@@ -185,6 +262,15 @@ def main() -> None:
     if not articles:
         print("No articles matched.", file=sys.stderr)
         raise SystemExit(1)
+
+    # Named up front, before any result scrolls past. A reader who sees only
+    # the trailing census should not have to work out why the article count
+    # changed, and a file skipped in error is only findable if it is announced.
+    if corpus.skipped:
+        print(f"Skipped {len(corpus.skipped)} file(s) with no frontmatter — not articles:")
+        for path in corpus.skipped:
+            print(f"   -  {path.name}")
+        print()
 
     results: list[ArticleResult] = []
     # A temporary output root, removed on the way out: the sweep converts real
@@ -205,7 +291,7 @@ def main() -> None:
             else:
                 print(f"·  {result.name}")
 
-    census = summarize(results)
+    census = summarize(results, skipped_count=len(corpus.skipped))
     print()
     print(census)
 
