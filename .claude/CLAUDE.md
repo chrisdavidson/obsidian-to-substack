@@ -36,7 +36,7 @@ tagged with a wheel and sdist attached, none of them on PyPI:
   verified by live paste rather than inference.
 - **v1.1 (2026-08-09)** — Core Value 2 gets a default-on guard, the `fidelity_loss`
   preflight check. Its original baseline (46/46 clean, 93.8% coverage) was restated
-  2026-08-11 once the corpus was defined: **42/42 clean, 92.8%, 6 skipped.**
+  2026-08-11 once the corpus was defined: **43/43 clean, 93.0%, 5 skipped.**
 - **v1.2 (2026-08-10)** — the gate. A run that knows its output is broken can no longer
   end by reporting success: `--copy` refuses on any preflight warning, `--force` is the
   stated escape hatch.
@@ -274,8 +274,8 @@ frontmatter splitting and image rewriting, so comparing against it would exempt 
 those stages dropped) plus the table rows captured before `replace_tables_with_images`
 consumed them.
 
-`tools/fidelity_sweep` runs it across the corpus. Baseline 2026-08-11: **42/42 clean, 0
-unaccounted removals, 92.8% word coverage, 6 files skipped.** Always quote the coverage
+`tools/fidelity_sweep` runs it across the corpus. Baseline 2026-08-11: **43/43 clean, 0
+unaccounted removals, 93.0% word coverage, 5 files skipped.** Always quote the coverage
 beside the zero — every authorized span withholds words, so a check that authorized
 everything reads clean too. The corpus currently contains no `%%` at all, so a corpus-wide
 probe proves nothing about the comment path; validate that one by injecting a trigger into a
@@ -284,15 +284,19 @@ temp copy.
 **The corpus is defined by frontmatter presence**, not by file extension (`260811-crp`).
 The previous baseline — 46/46 at 93.8% — was measured over a set selected by `rglob("*.md")`
 that included companion LinkedIn promo posts, so its denominator was never the set of things
-this tool converts. Coverage moved 93.8% → 92.8% because the companions are short and
+this tool converts. Coverage moved 93.8% → 93.0% because the companions are short and
 header-less and were inflating it.
 
-**One real article is outside the corpus and should not be.** `Data, Information, Knowledge,
-and Wisdom one data source at a time.md` (2,344 words) has no frontmatter block, so the rule
-skips it. The fix is one `title:` line in the vault and it re-admits itself; until then the
-census covers 42 of 43 real articles. The other five skips are genuine companions. **Read the
-skipped list on every run** — that single casualty was found by reading it, and it is the
-reason the list is printed rather than counted.
+The first run of the rule skipped **six** files, one of which — `Data, Information,
+Knowledge, and Wisdom one data source at a time.md`, 2,344 words — was a genuine article that
+simply had no header. It got a `title:` block in the vault the same day (per VAULT-CONVENTIONS:
+`title:` is reserved for notes opening at `##` with no H1, which is exactly that file), which
+re-admitted it and took the census to 43/43. **All five remaining skips are LinkedIn companion
+posts**, so the corpus is now exactly the set of real articles.
+
+**Read the skipped list on every run.** That casualty was found by reading it and by nothing
+else — the census total showed a tidy `42/42 clean` either way. It is the reason the list is
+printed per file rather than counted.
 
 **The pipeline and Obsidian disagree about which embeds resolve** — a known divergence,
 recorded rather than fixed. Obsidian resolves `![[embed]]` vault-wide including the central
