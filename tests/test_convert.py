@@ -113,6 +113,12 @@ class TestConvertArticle:
                 f"article.html references {sorted(written - reported)}, which "
                 f"the run wrote but png_files does not name"
             )
+            # png_files is assembled from two independent sources (image_map,
+            # and the table renders appended after it), so nothing structurally
+            # prevents one path arriving twice — an article embedding
+            # `![[table-1.png]]` as a raster alongside a rendered table 1 would
+            # do it. A consumer counting entries would then over-report.
+            assert len(result["png_files"]) == len(set(result["png_files"]))
 
     def test_table_csv_generated(self):
         article = str(FIXTURES_DIR / "sample_article.md")
