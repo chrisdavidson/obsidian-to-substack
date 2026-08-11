@@ -28,7 +28,7 @@ comment content) reached a live published post without the author noticing on re
 
 ### Current State
 
-**v1.3 shipped 2026-08-10**, the current release. Four public releases so far, each one
+**v1.3.1 shipped 2026-08-11**, the current release. Five public releases so far, each one
 tagged with a wheel and sdist attached, none of them on PyPI:
 
 - **v1.0 (2026-08-08)** — 21/21 requirements, audit passed. Core Value 1 met: tables, SVG
@@ -41,6 +41,10 @@ tagged with a wheel and sdist attached, none of them on PyPI:
   stated escape hatch.
 - **v1.3 (2026-08-10)** — `--copy` reaches macOS and Windows. See the Platform constraint
   below before describing either as working.
+- **v1.3.1 (2026-08-11)** — `png_files` names every image the run writes. The rendered
+  table PNGs were written and referenced but reported nowhere; a Core Value 2 defect in
+  the reporting surface, found from the consumer side because preflight's `missing_image`
+  only fires for a src *absent* from the output directory. First three-part tag.
 
 The fix history that once lived only in the author's memory is `docs/FINDINGS-MANUAL.md`,
 regenerated into `docs/FINDINGS.md` by `tools/substack_diff`.
