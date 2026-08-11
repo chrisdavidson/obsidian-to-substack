@@ -5,6 +5,54 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] — 2026-08-11
+
+`png_files` now names every image the run writes.
+
+A converted article's result listed its exported SVGs and its copied rasters, but
+never the table PNGs — even though the run wrote them and the body it returned
+pointed straight at them. Nothing in the output was wrong; what the run *said*
+about its own output was incomplete, which is a Core Value 2 defect in the
+reporting surface rather than in the article.
+
+### Fixed
+
+- **Rendered table PNGs are reported in `convert_article`'s `png_files`.**
+  `replace_tables_with_images` wrote `table-N.png` and rewrote the body to
+  reference it, then told its caller nothing. Tables were the one image class the
+  result never named.
+
+  Found from the consumer side rather than from here. A downstream tool assembles
+  a publishable directory by copying every `png_files` entry next to
+  `article.html`, and had built one referencing two images it never copied. The
+  converter's own preflight could not see it: `missing_image` fires for a `src`
+  *absent* from the output directory, and these files were present — written,
+  referenced, and simply unmentioned.
+
+  Only PNGs that were actually rendered are reported. A table whose render fails
+  writes no file and leaves a placeholder comment; naming a path that does not
+  exist would fail harder than the omission being fixed.
+
+### Changed
+
+- **`replace_tables_with_images` returns `TableReplacement(text, png_files)`**
+  instead of a bare string. Internal to `table_handler.py` — `convert_article`'s
+  result dict is unchanged in shape, and `png_files` is the same key holding the
+  same type, now merely complete. Noted here for anyone importing that function
+  directly.
+
+  The paths are merged at the result rather than into `image_map`, which is keyed
+  by Obsidian embed name and handed to the syntax transformer. A table PNG was
+  never an embed.
+
+### Not verified
+
+Unchanged from 1.3.0 and repeated rather than assumed: **the macOS and Windows
+clipboard paths have still never been run on their target platforms.** Nothing
+this release touched `clipboard.py`, and no report has arrived from either.
+
+406 tests pass, up from 403.
+
 ## [1.3.0] — 2026-08-10
 
 `--copy` reaches macOS and Windows. Built from the documented mechanisms and
@@ -268,6 +316,7 @@ Recorded rather than absorbed — each was established by hand against a real dr
   hand-off additionally needs a browser that honours middle-click paste of the
   primary selection.
 
+[1.3.1]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.3.1
 [1.3.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.3
 [1.2.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.2
 [1.1.0]: https://github.com/chrisdavidson/obsidian-to-substack/releases/tag/v1.1
