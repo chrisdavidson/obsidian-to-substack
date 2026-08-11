@@ -5,6 +5,7 @@ import csv
 import re
 import logging
 from pathlib import Path
+from typing import NamedTuple
 
 from .table_render import render_table
 
@@ -123,12 +124,30 @@ def table_to_csv(parsed_rows: list[list[str]], output_path: str) -> str:
     return str(path)
 
 
+class TableReplacement(NamedTuple):
+    """The rewritten text, and the PNGs written while rewriting it.
+
+    The second field exists because `convert_article` builds its `png_files`
+    result from what its callees report, and this function used to report
+    nothing — the table PNGs were written to disk and referenced by the body
+    but named nowhere the caller could see. A consumer assembling a
+    publishable directory from `png_files` therefore left them behind.
+
+    Returning them beats reconstructing `table-{n}.png` at the call site: that
+    name is formed here, and a caller that re-derives it silently collects
+    nothing the day this module renames anything.
+    """
+
+    text: str
+    png_files: list[str]
+
+
 def replace_tables_with_images(
     text: str,
     tables: list[tuple[int, int, str, list[list[str]]]],
     output_dir: str,
     scale: float = 1.0,
-) -> str:
+) -> TableReplacement:
     """Replace each table with a rendered PNG figure, and export the CSV too.
 
     This is the only table path. Substack's composer will not accept a
@@ -136,23 +155,32 @@ def replace_tables_with_images(
     author used to do by hand. The CSV is still written alongside it as a
     standalone data sidecar.
 
-    Tables are processed in reverse order to preserve line numbers.
+    Tables are processed in reverse order to preserve line numbers, so the
+    reported PNGs are sorted back into table order before returning — a caller
+    reading the list should see table-1 before table-2.
+
+    Only PNGs that were actually written are reported. A table whose render
+    raises leaves a placeholder comment and no file; naming it anyway would
+    hand the caller a path that never existed, which fails harder than the
+    omission this return value fixes.
     """
     if not tables:
-        return text
+        return TableReplacement(text, [])
 
     out_dir = Path(output_dir)
     lines = text.split("\n")
+    written: list[tuple[int, str]] = []
 
     for idx, (start, end, raw, parsed_rows) in enumerate(reversed(tables), 1):
         table_num = len(tables) - idx + 1
         table_to_csv(parsed_rows, str(out_dir / f"table-{table_num}.csv"))
 
         png_name = f"table-{table_num}.png"
+        png_path = out_dir / png_name
         try:
             render_table(
                 parsed_rows,
-                str(out_dir / png_name),
+                str(png_path),
                 alignments=parse_alignments(raw),
                 scale=scale,
             )
@@ -167,9 +195,15 @@ def replace_tables_with_images(
             ]
             continue
 
+        # Recorded only past the except branch — a render that raised wrote no
+        # file, and `continue` above skips this.
+        written.append((table_num, str(png_path)))
+
         figure = f'<figure><img src="{png_name}" alt="Table {table_num}"></figure>'
         lines[start:end + 1] = [figure]
 
-    return "\n".join(lines)
+    return TableReplacement(
+        "\n".join(lines), [path for _num, path in sorted(written)]
+    )
 
 

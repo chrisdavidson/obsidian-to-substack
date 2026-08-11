@@ -341,9 +341,15 @@ def convert_article(
     body = rewrite_image_refs(body, copied)
 
     tables = extract_tables(body)
-    body = replace_tables_with_images(
+    # The table PNGs are deliberately NOT merged into image_map. That dict is
+    # keyed by Obsidian embed name and is handed to transform_obsidian_syntax
+    # below; a table PNG was never an embed, and the body already carries its
+    # literal <figure><img src="table-N.png"> from the call above. They join
+    # the result's png_files directly, at the bottom of this function.
+    table_result = replace_tables_with_images(
         body, tables, str(article_output), scale=dpi / 96
     )
+    body = table_result.text
 
     body = transform_obsidian_syntax(body, image_map=image_map)
 
@@ -388,7 +394,15 @@ def convert_article(
         "title": resolved_title,
         "html_path": str(html_path),
         "metadata_path": str(meta_path),
-        "png_files": list(image_map.values()),
+        # png_files is the manifest of every image this run wrote next to
+        # article.html — exported SVGs, copied rasters, and rendered tables.
+        # A consumer assembling a publishable directory copies exactly these,
+        # so an image written but omitted here pastes broken from that copy.
+        # The table half was missing until 4c92964 pinned it: they were
+        # written and referenced but reported by neither png_files nor a
+        # preflight warning (missing_image only fires for a src ABSENT from
+        # the output directory, and these are present).
+        "png_files": list(image_map.values()) + table_result.png_files,
         "table_count": len(tables),
         "output_dir": str(article_output),
         "warnings": warnings,

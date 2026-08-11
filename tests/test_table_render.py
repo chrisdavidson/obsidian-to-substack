@@ -168,14 +168,14 @@ class TestReplaceTablesWithImages:
         tables = extract_tables(SIMPLE_TABLE)
         result = replace_tables_with_images(SIMPLE_TABLE, tables, str(tmp_path))
 
-        assert "<!-- TABLE" not in result
-        assert "Datawrapper import" not in result
+        assert "<!-- TABLE" not in result.text
+        assert "Datawrapper import" not in result.text
 
     def test_table_becomes_an_image_figure(self, tmp_path):
         tables = extract_tables(SIMPLE_TABLE)
         result = replace_tables_with_images(SIMPLE_TABLE, tables, str(tmp_path))
 
-        assert '<img src="table-1.png"' in result
+        assert '<img src="table-1.png"' in result.text
         assert (tmp_path / "table-1.png").exists()
 
     def test_csv_is_still_exported_on_the_image_path(self, tmp_path):
@@ -188,9 +188,9 @@ class TestReplaceTablesWithImages:
         tables = extract_tables(SIMPLE_TABLE)
         result = replace_tables_with_images(SIMPLE_TABLE, tables, str(tmp_path))
 
-        assert "Intro paragraph." in result
-        assert "Closing paragraph." in result
-        assert "| Derived |" not in result
+        assert "Intro paragraph." in result.text
+        assert "Closing paragraph." in result.text
+        assert "| Derived |" not in result.text
 
     def test_multiple_tables_are_numbered_independently(self, tmp_path):
         text = SIMPLE_TABLE + "\n" + SIMPLE_TABLE
@@ -200,7 +200,7 @@ class TestReplaceTablesWithImages:
         assert len(tables) == 2
         assert (tmp_path / "table-1.png").exists()
         assert (tmp_path / "table-2.png").exists()
-        assert 'table-1.png' in result and 'table-2.png' in result
+        assert 'table-1.png' in result.text and 'table-2.png' in result.text
 
     def test_no_tables_leaves_text_untouched(self, tmp_path):
         text = "Just prose.\n"
