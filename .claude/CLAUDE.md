@@ -35,7 +35,8 @@ tagged with a wheel and sdist attached, none of them on PyPI:
   diagrams, images, wikilinks, formatting and footnotes all survive into a Substack draft,
   verified by live paste rather than inference.
 - **v1.1 (2026-08-09)** — Core Value 2 gets a default-on guard, the `fidelity_loss`
-  preflight check, at a measured baseline of 46/46 clean and 93.8% word coverage.
+  preflight check, at a measured baseline of 46/46 clean and 93.8% word coverage — see
+  the denominator caveat below before quoting that figure.
 - **v1.2 (2026-08-10)** — the gate. A run that knows its output is broken can no longer
   end by reporting success: `--copy` refuses on any preflight warning, `--force` is the
   stated escape hatch.
@@ -49,12 +50,21 @@ tagged with a wheel and sdist attached, none of them on PyPI:
 The fix history that once lived only in the author's memory is `docs/FINDINGS-MANUAL.md`,
 regenerated into `docs/FINDINGS.md` by `tools/substack_diff`.
 
-No milestone is active and none is warranted — the ROADMAP Backlog has been **empty since
-2026-08-09**, and everything shipped since arrived as a quick task rather than from a
-queue. **Quick tasks, not the phase pipeline, is a recorded decision**, not an accident:
-`.planning/phases/` will not exist and audits verify from primary evidence. What would
-change this is evidence — a report from a macOS or Windows user, a defect in a live paste
-— not planning.
+No milestone is active and none is coming. **Standing maintenance is a recorded decision as
+of 2026-08-11**, not a lull: the vault is an interface the author edits for unrelated
+reasons, so defects arrive on a schedule no roadmap controls. Separately, **quick tasks, not
+the phase pipeline, is also a recorded decision** — `.planning/phases/` will not exist and
+audits verify from primary evidence. What would change either is evidence — a report from a
+macOS or Windows user, a defect in a live paste — not planning. One live backlog item exists
+(define the fidelity corpus); it is maintenance work with a decision attached.
+
+**The 2026-08-11 altitude check returned PAUSE, and it is open.** Nothing has been published
+through the pipeline since v1.2, while v1.2, v1.3 and v1.3.1 all shipped. Every genuine
+defect in this project's history was found by a live paste or a real run, so Core Value 2's
+claim currently rests on fixtures and a corpus sweep with a known-wrong denominator. It lifts
+when a real article goes through and the author records whether the composer needed touching.
+Take small maintenance work if asked; do not cut another release against it without saying
+this out loud.
 
 Three limitations are recorded rather than absorbed: the title is placed by hand (Substack
 never fills its title field from pasted body content), image alignment is not controllable
@@ -84,7 +94,15 @@ releases, and a help string has now gone stale twice — `--svg-dir` at `96ff451
   platforms; the author has neither machine, so unlike Substack's rendering there is no
   human who can settle them. Their tests prove the right bytes reach the right tool and
   nothing more — do not describe them as working. The title hand-off stays Linux-only by
-  design: macOS and Windows have one clipboard and it holds the body
+  design: macOS and Windows have one clipboard and it holds the body. **Do not extend these
+  backends** (decided 2026-08-11): shipping them was the named-person gate working, but
+  building further on permanently unverifiable code is that gate lapsing. Re-opens on a
+  report from someone who runs one
+
+- **Vault as a changing interface**: the vault is not a fixed input. DIAG-02 was the author
+  reorganizing their own vault into per-article `svg/<slug>/` subdirectories and the tool
+  breaking as a consequence — not a coding error. Assume layout assumptions rot, and put
+  them in a preflight check rather than a comment
 
 - **Secrets**: `*.key` is gitignored
 
@@ -230,6 +248,26 @@ leaked, fidelity catches what vanished.** With an odd marker count the stripper 
 and strips nothing, so a comment leaks (loudly, into preflight) while fidelity correctly
 reports clean.
 
+**There is a third axis and nothing guards it: what was written but never reported.** Both
+checks above inspect *content* — the HTML and the source text. `convert_article` also returns
+a manifest (`png_files`, `svg_count`, `table_count`, `metadata.json`), and v1.3.1 fixed a case
+where that manifest had been wrong for four releases: the rendered table PNGs were written to
+disk and referenced by the body and named by nothing. `missing_image` could not see it by
+construction — it fires on a src *absent* from the output directory, and these were present.
+It surfaced only because a downstream repo consumed the manifest and built a bundle
+referencing images it never copied.
+
+So: **the result dict is a self-description with no ledger behind it**, and the one part of
+it anyone has checked turned out to be wrong. If you change what the pipeline writes, check
+what it *says* it wrote. `convert.py:259`'s comment asserted the fixed behaviour since before
+it was true, which is how this stayed unexamined.
+
+**The library API is not a supported surface** (decided 2026-08-11). A second repo,
+`article-workflow`, consumes `convert_article`'s result dict via an editable path dependency.
+The clipboard remains the real publishing path, so the result dict carries no compatibility
+promise and that repo tracks it at its own risk — but know it exists before you change a
+return shape, because the guards above will not tell you.
+
 It runs on every conversion, via `preflight`'s `fidelity_loss` check —
 `convert_article` hands it the **raw file text** (not `body`, which by then has been through
 frontmatter splitting and image rewriting, so comparing against it would exempt whatever
@@ -241,6 +279,21 @@ unaccounted removals, 93.8% word coverage.** Always quote the coverage beside th
 every authorized span withholds words, so a check that authorized everything reads clean
 too. The corpus currently contains no `%%` at all, so a corpus-wide probe proves nothing
 about the comment path; validate that one by injecting a trigger into a temp copy.
+
+**Quote the denominator caveat with that number.** The sweep selects the corpus with
+`rglob("*.md")`, so "46 articles" includes at least four companion LinkedIn promo posts
+(139–480 words, no frontmatter) that sit inside their parent article's directory and were
+never going to be pasted into Substack. They convert clean, so the baseline is not invalid —
+but it is measured over a set that is not the set of things this tool converts, and a corpus
+picked by file extension keeps acquiring companions as the author writes them. Defining the
+rule is an open backlog item.
+
+**The pipeline and Obsidian disagree about which embeds resolve** — a known divergence,
+recorded rather than fixed. Obsidian resolves `![[embed]]` vault-wide including the central
+attachment folder; `search_dirs` covers the article directory and the resolved SVG directory
+only. The corpus's five `missing_image` warnings are all this, and every referenced file
+exists. Read that warning as "this pipeline cannot see your attachment folder," not as "the
+file is missing."
 
 `tests/fixtures/torture_test/` is one synthetic article carrying every construct that has
 ever broken. Adding to it is the cheapest end-to-end guard available.
