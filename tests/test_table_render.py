@@ -204,7 +204,53 @@ class TestReplaceTablesWithImages:
 
     def test_no_tables_leaves_text_untouched(self, tmp_path):
         text = "Just prose.\n"
-        assert replace_tables_with_images(text, [], str(tmp_path)) == text
+        assert replace_tables_with_images(text, [], str(tmp_path)).text == text
+
+    def test_written_pngs_are_reported_back(self, tmp_path):
+        """The caller cannot know what was written unless this says so.
+
+        convert_article builds `png_files` from what it is told exists. Before
+        this, the table PNGs were written and referenced by the body but named
+        nowhere in the result, so a consumer collecting `png_files` assembled a
+        directory whose article.html pointed at files it had not copied.
+        Reconstructing `table-{n}.png` at the call site was the alternative and
+        was rejected: that name is private to this module.
+        """
+        text = SIMPLE_TABLE + "\n" + SIMPLE_TABLE
+        tables = extract_tables(text)
+        result = replace_tables_with_images(text, tables, str(tmp_path))
+
+        assert [Path(p).name for p in result.png_files] == [
+            "table-1.png",
+            "table-2.png",
+        ]
+        for png in result.png_files:
+            assert Path(png).exists()
+
+    def test_a_failed_render_is_absent_from_the_reported_pngs(
+        self, tmp_path, monkeypatch
+    ):
+        """A render failure stays a soft degradation, and stays honest.
+
+        The except branch writes no PNG and leaves a placeholder comment. Naming
+        the unwritten file anyway would hand the consumer a path that never
+        existed — worse than the omission this test's sibling fixes, because the
+        consumer would fail resolving it rather than quietly under-collect.
+        """
+        monkeypatch.setattr(
+            table_handler,
+            "render_table",
+            lambda *a, **kw: (_ for _ in ()).throw(ValueError("no fonts")),
+        )
+        tables = extract_tables(SIMPLE_TABLE)
+        result = replace_tables_with_images(SIMPLE_TABLE, tables, str(tmp_path))
+
+        assert result.png_files == []
+        assert "<!-- TABLE 1: render failed" in result.text
+        assert not (tmp_path / "table-1.png").exists()
+        # The CSV sidecar is still written — it is the recovery path the
+        # placeholder comment points the author at.
+        assert (tmp_path / "table-1.csv").exists()
 
 
 class TestDatawrapperRemovalGuards:

@@ -73,6 +73,47 @@ class TestConvertArticle:
             for png in result["png_files"]:
                 assert Path(png).exists()
 
+    def test_every_local_img_src_is_named_in_png_files(self):
+        """png_files is the manifest of what the run wrote, or it is nothing.
+
+        A downstream consumer (article-workflow's bundle step) assembles a
+        publishable directory by copying every png_files entry next to
+        article.html. Any local <img src> the result does not name pastes
+        broken from that directory. Stated as the invariant rather than as
+        `table-1.png`, so a future image class that skips the manifest fails
+        here too.
+
+        Compared by basename: png_files holds absolute paths, src holds the
+        name as written next to article.html.
+
+        Scoped to images the run actually WROTE. An embed that resolves to
+        nothing (the fixture's `photo.png`) is legitimately absent from
+        png_files — nothing was written to name — and preflight already reports
+        it as `missing_image`/DIAG-02. The gap this pins is the opposite and
+        louder one: a file written into the output directory, referenced by the
+        HTML, and reported by neither png_files nor a warning.
+        """
+        article = str(FIXTURES_DIR / "sample_article.md")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = convert_article(
+                article, tmpdir, svg_dir=str(FIXTURES_DIR)
+            )
+            out_dir = Path(result["output_dir"])
+            html = Path(result["html_path"]).read_text()
+            srcs = {
+                src
+                for src in re.findall(r'<img[^>]+src="([^"]+)"', html)
+                if "://" not in src and not src.startswith("data:")
+            }
+            written = {src for src in srcs if (out_dir / src).is_file()}
+            reported = {Path(p).name for p in result["png_files"]}
+
+            assert written, "fixture should write at least one embedded image"
+            assert written <= reported, (
+                f"article.html references {sorted(written - reported)}, which "
+                f"the run wrote but png_files does not name"
+            )
+
     def test_table_csv_generated(self):
         article = str(FIXTURES_DIR / "sample_article.md")
         with tempfile.TemporaryDirectory() as tmpdir:
