@@ -5,6 +5,36 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4] — 2026-08-30
+
+Native Wayland clipboard support with full PRIMARY/CLIPBOARD selection parity.
+
+### Added
+
+- **Wayland clipboard backend via wl-copy/wl-paste.** Linux systems running
+  Wayland can now use `--copy` with full feature parity to X11: the article
+  body goes to CLIPBOARD (Ctrl+V) and the title goes to PRIMARY (middle-click),
+  matching the X11 experience. Requires `wl-clipboard` package.
+
+- **Automatic platform detection.** The tool detects whether the system is
+  running X11 or Wayland via environment variables (`XDG_SESSION_TYPE`,
+  `WAYLAND_DISPLAY`) and routes to the correct clipboard backend. No manual
+  configuration needed.
+
+### Changed
+
+- **Updated README and help text** to document Wayland support alongside X11.
+  The two-gesture title hand-off is now documented as available on "Linux
+  (X11 and Wayland)" rather than "X11 only."
+
+### Technical Details
+
+- Wayland detection in `clipboard.py:_is_wayland()`
+- New `LINUX_WAYLAND` platform constant
+- New `_copy_html_wayland()` and `_copy_title_wayland()` functions using
+  `wl-copy --type text/html` for body and `wl-copy --primary` for title
+- Comprehensive test coverage for Wayland platform detection and selection handling
+
 ## [1.3.1] — 2026-08-11
 
 `png_files` now names every image the run writes.
