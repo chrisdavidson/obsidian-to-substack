@@ -18,6 +18,7 @@ import pytest
 from obsidian_to_substack.clipboard import (
     DARWIN,
     LINUX,
+    LINUX_WAYLAND,
     WINDOWS,
     ascii_escape,
     build_cf_html,
@@ -42,6 +43,28 @@ class TestPlatformDetection:
     )
     def test_known_platforms(self, sys_platform, expected):
         with patch("sys.platform", sys_platform):
+            assert current_platform() == expected
+
+    @pytest.mark.parametrize(
+        "sys_platform,xdg_session_type,wayland_display,expected",
+        [
+            ("linux", "wayland", None, LINUX_WAYLAND),
+            ("linux", None, "wayland-1", LINUX_WAYLAND),
+            ("linux", "x11", None, LINUX),
+            ("linux", None, None, LINUX),
+        ],
+    )
+    def test_wayland_detection(self, sys_platform, xdg_session_type, wayland_display, expected):
+        env_patch = {}
+        if xdg_session_type:
+            env_patch["XDG_SESSION_TYPE"] = xdg_session_type
+        if wayland_display:
+            env_patch["WAYLAND_DISPLAY"] = wayland_display
+
+        with (
+            patch("sys.platform", sys_platform),
+            patch.dict("os.environ", env_patch, clear=False),
+        ):
             assert current_platform() == expected
 
     def test_an_unknown_platform_is_not_guessed_at(self):
@@ -135,6 +158,48 @@ class TestBuildCfHtml:
         build_cf_html(source)
 
         assert source == copy
+
+
+class TestWaylandBackend:
+    """wl-copy on Wayland is the Linux X11 fallback when running on Wayland."""
+
+    def test_wl_copy_is_invoked_with_text_html_type(self):
+        with (
+            patch("sys.platform", "linux"),
+            patch.dict("os.environ", {"XDG_SESSION_TYPE": "wayland"}, clear=False),
+            patch("shutil.which", return_value="/usr/bin/wl-copy"),
+            patch("subprocess.run") as run,
+        ):
+            copy_html("<p>hello</p>")
+
+        argv = run.call_args[0][0]
+        assert argv[0] == "wl-copy"
+        assert "--type" in argv
+        assert "text/html" in argv
+
+    def test_the_html_reaches_stdin(self):
+        with (
+            patch("sys.platform", "linux"),
+            patch.dict("os.environ", {"XDG_SESSION_TYPE": "wayland"}, clear=False),
+            patch("shutil.which", return_value="/usr/bin/wl-copy"),
+            patch("subprocess.run") as run,
+        ):
+            copy_html("<p>hello</p>")
+
+        assert run.call_args.kwargs.get("input") is not None
+        assert b"<p>hello</p>" in run.call_args.kwargs["input"]
+
+    def test_missing_wl_copy_exits_with_a_message(self, capsys):
+        with (
+            patch("sys.platform", "linux"),
+            patch.dict("os.environ", {"XDG_SESSION_TYPE": "wayland"}, clear=False),
+            patch("shutil.which", return_value=None),
+            pytest.raises(SystemExit),
+        ):
+            copy_html("<p>hello</p>")
+
+        assert "wl-copy" in capsys.readouterr().err
+        assert "wl-clipboard" in capsys.readouterr().err
 
 
 class TestMacOsBackend:
@@ -386,6 +451,19 @@ class TestTitleHandoff:
         # the single clipboard, which is the opposite of helping.
         with (
             patch("sys.platform", sys_platform),
+            patch("subprocess.run") as run,
+        ):
+            copy_title("A Title")
+
+        assert not run.called
+        assert "by hand" in capsys.readouterr().out
+
+    def test_wayland_prints_instead_of_copying(self, capsys):
+        # Wayland does not distinguish PRIMARY and CLIPBOARD selections, so
+        # writing the title would clobber the body.
+        with (
+            patch("sys.platform", "linux"),
+            patch.dict("os.environ", {"XDG_SESSION_TYPE": "wayland"}, clear=False),
             patch("subprocess.run") as run,
         ):
             copy_title("A Title")

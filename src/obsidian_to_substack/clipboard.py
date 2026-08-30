@@ -33,6 +33,12 @@ from pathlib import Path
 LINUX = "linux"
 DARWIN = "darwin"
 WINDOWS = "windows"
+LINUX_WAYLAND = "linux_wayland"
+
+
+def _is_wayland() -> bool:
+    """Check if running under Wayland."""
+    return os.getenv("XDG_SESSION_TYPE") == "wayland" or bool(os.getenv("WAYLAND_DISPLAY"))
 
 
 def current_platform() -> str | None:
@@ -47,6 +53,8 @@ def current_platform() -> str | None:
     """
     platform = sys.platform
     if platform.startswith("linux"):
+        if _is_wayland():
+            return LINUX_WAYLAND
         return LINUX
     if platform == "darwin":
         return DARWIN
@@ -84,6 +92,14 @@ def ensure_backend() -> None:
         )
         sys.exit(1)
 
+    if platform == LINUX_WAYLAND and not shutil.which("wl-copy"):
+        print(
+            "Error: wl-copy is required for --copy on Wayland. Install it with:\n"
+            "  sudo apt install wl-clipboard",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     if platform == DARWIN and not shutil.which("osascript"):
         print(
             "Error: osascript is required for --copy on macOS. It ships with\n"
@@ -113,6 +129,8 @@ def copy_html(html_content: str) -> None:
 
     if platform == LINUX:
         _copy_html_linux(html_content)
+    elif platform == LINUX_WAYLAND:
+        _copy_html_wayland(html_content)
     elif platform == DARWIN:
         _copy_html_macos(html_content)
     elif platform == WINDOWS:
@@ -139,6 +157,9 @@ def copy_title(title: str) -> None:
     On X11 it can: PRIMARY is a second selection independent of CLIPBOARD, so
     one run hands over both -- Ctrl+V for the body, middle-click for the title.
 
+    On Wayland, wl-clipboard does not distinguish PRIMARY and CLIPBOARD
+    selections, so the title would overwrite the body. Print and stop instead.
+
     On macOS and Windows there is exactly one clipboard, and it already holds
     the body. Writing the title there would destroy the payload `copy_html`
     just placed, which is worse than doing nothing, so those platforms print
@@ -156,7 +177,7 @@ def copy_title(title: str) -> None:
         _copy_title_linux(title)
         return
 
-    if platform in (DARWIN, WINDOWS):
+    if platform in (LINUX_WAYLAND, DARWIN, WINDOWS):
         print(
             "  Title above — copy it by hand "
             "(this platform has only one clipboard)"
@@ -234,6 +255,36 @@ def _run_xclip(argv: list[str], payload: bytes) -> str | None:
             return detail or str(exc)
 
     return None
+
+
+# --------------------------------------------------------------------------
+# Linux / Wayland -- wl-copy
+# --------------------------------------------------------------------------
+
+
+def _copy_html_wayland(html_content: str) -> None:
+    if not shutil.which("wl-copy"):
+        print(
+            "Error: wl-copy is required for --copy on Wayland. Install it with:\n"
+            "  sudo apt install wl-clipboard",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    try:
+        subprocess.run(
+            ["wl-copy", "--type", "text/html"],
+            input=html_content.encode("utf-8"),
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or b"").decode("utf-8", "replace").strip()
+        print(f"Error: clipboard copy failed: {detail or exc}", file=sys.stderr)
+        sys.exit(1)
+
+    print("  Body on the clipboard — Ctrl+V into Substack's body")
 
 
 # --------------------------------------------------------------------------
