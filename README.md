@@ -16,16 +16,16 @@ the Substack composer.
   falls back to Inkscape if available)
 - A clipboard tool for `--copy`, depending on your platform:
   - **Linux/X11** — `xclip`
+  - **Linux/Wayland** — `wl-copy` (from `wl-clipboard`)
   - **macOS** — `osascript` (ships with macOS)
   - **Windows** — PowerShell (ships with Windows)
 
 > **Platform note.** Conversion is cross-platform and always has been. `--copy` now has a
-> backend for all three platforms, but they are **not equally proven**: the Linux path has
-> been used against a real Substack composer many times, while the macOS and Windows paths
-> have never been run on their target platforms — the author has neither machine. They are
-> tested only in the sense that the right bytes provably reach the right tool. If one
-> fails, `article.html` is still written and can be copied by hand. See
-> [Known limitations](#known-limitations).
+> backend for all three platforms. The Linux paths (X11 and Wayland) have been exercised
+> against a real Substack composer, while the macOS and Windows paths have never been run
+> on their target platforms — the author has neither machine. They are tested only in the
+> sense that the right bytes provably reach the right tool. If one fails, `article.html`
+> is still written and can be copied by hand. See [Known limitations](#known-limitations).
 
 ## Install
 
@@ -82,7 +82,7 @@ Substack never fills its title field from pasted body content, so the title
 always has to be placed by hand. How much the tool can help depends on how many
 clipboards your platform has.
 
-**On Linux/X11** there are two independent selections, so one run covers both
+**On Linux (X11 and Wayland)** there are two independent selections, so one run covers both
 and pasting takes two gestures:
 
 - click into the **body** and press `Ctrl+V` — the article, copied as
@@ -118,7 +118,7 @@ legitimate titles.
 | `--file` | — | Process a single `.md` file instead of the whole directory |
 | `--svg-dir` | `<directory>/svg/<slug>/` if it exists, else `<directory>/svg/` | Override the SVG source directory |
 | `--dpi` | `192` | PNG export resolution |
-| `--copy` | off | Body HTML to the clipboard. On Linux the title also goes to the primary selection; on macOS and Windows it is printed instead, since those have only one clipboard. Refuses (exit 1, writes nothing) if preflight found a warning on the article — see `--force` |
+| `--copy` | off | Body HTML to the clipboard. On Linux (X11 and Wayland) the title also goes to the primary selection; on macOS and Windows it is printed instead, since those have only one clipboard. Requires `xclip` on X11, `wl-copy` on Wayland, `osascript` on macOS, or PowerShell on Windows. Refuses (exit 1, writes nothing) if preflight found a warning on the article — see `--force` |
 | `--force` | off | Copy anyway when preflight warned; only meaningful with `--copy` |
 | `--open` | off | Open the result in your browser |
 | `--dry-run` | off | Report what would happen without writing anything, including which embedded image references will not resolve and will paste broken |
@@ -184,11 +184,11 @@ has no rendering API, so every claim here was checked by hand:
   This is the project's verification split taken one step further: Substack's
   rendering needs a human to paste and report, and the author can be that human,
   but for these two backends there is nobody. Reports welcome.
-- **The two-gesture hand-off is Linux/X11 only.** It needs two independent
-  selections, which macOS and Windows do not have, and additionally a browser
-  that honours middle-click paste of the primary selection. On the other two
-  platforms the body takes the clipboard and the title is printed for you to
-  copy by hand.
+- **The two-gesture hand-off is Linux only** (both X11 and Wayland). It needs two
+  independent selections via `xclip` (X11) or `wl-copy` (Wayland), which macOS
+  and Windows do not have, and additionally a browser that honours middle-click
+  paste of the primary selection. On the other two platforms the body takes the
+  clipboard and the title is printed for you to copy by hand.
 
 ## Non-goals
 
