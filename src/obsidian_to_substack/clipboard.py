@@ -157,8 +157,9 @@ def copy_title(title: str) -> None:
     On X11 it can: PRIMARY is a second selection independent of CLIPBOARD, so
     one run hands over both -- Ctrl+V for the body, middle-click for the title.
 
-    On Wayland, wl-clipboard does not distinguish PRIMARY and CLIPBOARD
-    selections, so the title would overwrite the body. Print and stop instead.
+    On Wayland, wl-clipboard supports PRIMARY selection independently, so
+    both body and title can be handed over -- Ctrl+V for the body, middle-click
+    for the title, just like X11.
 
     On macOS and Windows there is exactly one clipboard, and it already holds
     the body. Writing the title there would destroy the payload `copy_html`
@@ -177,7 +178,11 @@ def copy_title(title: str) -> None:
         _copy_title_linux(title)
         return
 
-    if platform in (LINUX_WAYLAND, DARWIN, WINDOWS):
+    if platform == LINUX_WAYLAND:
+        _copy_title_wayland(title)
+        return
+
+    if platform in (DARWIN, WINDOWS):
         print(
             "  Title above — copy it by hand "
             "(this platform has only one clipboard)"
@@ -285,6 +290,30 @@ def _copy_html_wayland(html_content: str) -> None:
         sys.exit(1)
 
     print("  Body on the clipboard — Ctrl+V into Substack's body")
+
+
+def _copy_title_wayland(title: str) -> None:
+    if not shutil.which("wl-copy"):
+        return
+
+    try:
+        subprocess.run(
+            ["wl-copy", "--primary"],
+            input=title.encode("utf-8"),
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or b"").decode("utf-8", "replace").strip()
+        print(
+            f"Warning: could not put the title on the primary selection: {detail or exc}\n"
+            f"         Copy it from the Title line above instead.",
+            file=sys.stderr,
+        )
+        return
+
+    print("  Title on the primary selection — middle-click into the title field")
 
 
 # --------------------------------------------------------------------------

@@ -458,18 +458,20 @@ class TestTitleHandoff:
         assert not run.called
         assert "by hand" in capsys.readouterr().out
 
-    def test_wayland_prints_instead_of_copying(self, capsys):
-        # Wayland does not distinguish PRIMARY and CLIPBOARD selections, so
-        # writing the title would clobber the body.
+    def test_wayland_writes_the_primary_selection(self):
+        # Wayland supports PRIMARY selection via wl-copy --primary, just like X11.
         with (
             patch("sys.platform", "linux"),
             patch.dict("os.environ", {"XDG_SESSION_TYPE": "wayland"}, clear=False),
+            patch("shutil.which", return_value="/usr/bin/wl-copy"),
             patch("subprocess.run") as run,
         ):
             copy_title("A Title")
 
-        assert not run.called
-        assert "by hand" in capsys.readouterr().out
+        assert run.called
+        argv = run.call_args[0][0]
+        assert argv[0] == "wl-copy"
+        assert "--primary" in argv
 
     def test_an_empty_title_does_nothing_anywhere(self):
         with (
