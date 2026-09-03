@@ -642,7 +642,7 @@ def main() -> None:
             #
             # Why exit 1 and not a distinct code: it matches the existing
             # xclip-failure exit below (copy_html_to_clipboard,
-            # _run_xclip's caller) and nothing downstream scripts a
+            # _run_selection_owner's caller) and nothing downstream scripts a
             # distinction between the two failure reasons.
             #
             # Why --force exists at all: some warnings are known noise —

@@ -203,7 +203,7 @@ def _copy_html_linux(html_content: str) -> None:
         )
         sys.exit(1)
 
-    failure = _run_xclip(
+    failure = _run_selection_owner(
         ["xclip", "-selection", "clipboard", "-t", "text/html"],
         html_content.encode("utf-8"),
     )
@@ -218,7 +218,9 @@ def _copy_title_linux(title: str) -> None:
     if not shutil.which("xclip"):
         return
 
-    failure = _run_xclip(["xclip", "-selection", "primary"], title.encode("utf-8"))
+    failure = _run_selection_owner(
+        ["xclip", "-selection", "primary"], title.encode("utf-8")
+    )
     if failure is not None:
         print(
             f"Warning: could not put the title on the primary selection: {failure}\n"
@@ -230,20 +232,33 @@ def _copy_title_linux(title: str) -> None:
     print("  Title on the primary selection — middle-click into the title field")
 
 
-def _run_xclip(argv: list[str], payload: bytes) -> str | None:
-    """Hand `payload` to xclip. Returns None on success, else the error text.
+# --------------------------------------------------------------------------
+# Linux -- shared by both display servers
+# --------------------------------------------------------------------------
 
-    xclip must not inherit our stdout/stderr. An X11 selection is owned by a
-    live process: xclip forks a background child to serve the selection and the
-    parent exits immediately. That child keeps any inherited descriptor open
-    for as long as it owns the selection, so when our output is a pipe the
-    reader never sees EOF and the caller stalls indefinitely -- even though this
-    process has already exited. A terminal has no EOF to wait for, which is why
-    this only bites scripted use.
 
-    stderr goes to a temp file rather than DEVNULL so xclip's own diagnostics
-    survive, and rather than PIPE because reading a pipe to EOF would
-    reintroduce the very stall being avoided.
+def _run_selection_owner(argv: list[str], payload: bytes) -> str | None:
+    """Hand `payload` to a selection-owning tool. None on success, else the error.
+
+    Both Linux backends go through here, and that sharing is the point. A
+    selection on X11 or Wayland is owned by a live process, so xclip and
+    wl-copy each fork a background child to serve it and the parent exits
+    immediately. That child keeps any inherited descriptor open for as long as
+    it owns the selection, so when our output is a pipe the reader never sees
+    EOF and the caller stalls indefinitely -- even though this process has
+    already exited. A terminal has no EOF to wait for, which is why this only
+    bites scripted use.
+
+    stderr goes to a temp file rather than DEVNULL so the tool's own
+    diagnostics survive, and rather than PIPE because reading a pipe to EOF
+    would reintroduce the very stall being avoided.
+
+    The Wayland backend originally inlined its own subprocess.run with
+    `stderr=PIPE` and hung every non-interactive `--copy` for a whole release.
+    The hazard is identical on both display servers, so the handling is one
+    function and not two -- do not inline a second copy of it for a third
+    backend. Note that this is Linux-only on purpose: osascript and PowerShell
+    do not fork a selection owner, so they may pipe freely.
     """
     with tempfile.TemporaryFile() as err_file:
         try:
@@ -276,17 +291,12 @@ def _copy_html_wayland(html_content: str) -> None:
         )
         sys.exit(1)
 
-    try:
-        subprocess.run(
-            ["wl-copy", "--type", "text/html"],
-            input=html_content.encode("utf-8"),
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or b"").decode("utf-8", "replace").strip()
-        print(f"Error: clipboard copy failed: {detail or exc}", file=sys.stderr)
+    failure = _run_selection_owner(
+        ["wl-copy", "--type", "text/html"],
+        html_content.encode("utf-8"),
+    )
+    if failure is not None:
+        print(f"Error: clipboard copy failed: {failure}", file=sys.stderr)
         sys.exit(1)
 
     print("  Body on the clipboard — Ctrl+V into Substack's body")
@@ -296,18 +306,12 @@ def _copy_title_wayland(title: str) -> None:
     if not shutil.which("wl-copy"):
         return
 
-    try:
-        subprocess.run(
-            ["wl-copy", "--primary"],
-            input=title.encode("utf-8"),
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or b"").decode("utf-8", "replace").strip()
+    failure = _run_selection_owner(
+        ["wl-copy", "--primary"], title.encode("utf-8")
+    )
+    if failure is not None:
         print(
-            f"Warning: could not put the title on the primary selection: {detail or exc}\n"
+            f"Warning: could not put the title on the primary selection: {failure}\n"
             f"         Copy it from the Title line above instead.",
             file=sys.stderr,
         )
