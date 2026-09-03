@@ -235,8 +235,12 @@ class TestWaylandBackend:
         ):
             copy_html("<p>hello</p>")
 
-        assert "wl-copy" in capsys.readouterr().err
-        assert "wl-clipboard" in capsys.readouterr().err
+        # One readouterr, not two: the first call drains the buffer and the
+        # second returns "". Asserting against that empty string is how the
+        # install-hint half of this test passed without ever being checked.
+        err = capsys.readouterr().err
+        assert "wl-copy" in err
+        assert "wl-clipboard" in err
 
 
 class TestMacOsBackend:
@@ -433,16 +437,44 @@ class TestAgainstARealArticle:
         payload = script.split("«data HTML")[1].rstrip("»}")
         assert bytes.fromhex(payload).decode("utf-8") == html
 
-    def test_the_macos_script_is_too_long_for_argv(self, tmp_path):
-        # The reason it goes in on stdin, asserted rather than asserted-in-a-
-        # comment. Linux caps a single argument at 128kB (MAX_ARG_STRLEN); the
-        # hex doubles an already-100kB article.
+    def test_the_macos_script_is_too_long_for_argv(self):
+        """The reason it goes in on stdin, asserted rather than
+        asserted-in-a-comment.
+
+        Linux caps a single argument at 128kB (MAX_ARG_STRLEN) and hex
+        encoding doubles the payload, so the real ceiling is half of that:
+        anything over ~64kB cannot travel as an argument at all. A published
+        article is far past it -- the one measured while writing this weighed
+        742kB with its images inlined, which is 1.4MB of hex.
+
+        Sized against that documented figure rather than against the torture
+        fixture, which is not a stable ruler. Its rendered table PNGs shrink
+        when no TrueType font resolves and table_render falls back to the
+        bitmap default, which took the fixture from over the limit to 109kB
+        on one machine and failed this assertion for a reason that has
+        nothing to do with the code under test. The fixture still guards the
+        doubling itself, in the test below.
+        """
+        from obsidian_to_substack.clipboard import _MACOS_SCRIPT
+
+        MAX_ARG_STRLEN = 131072
+        article = "<p>x</p>" * 12_500  # 100kB, the low end of a real article
+
+        script = _MACOS_SCRIPT.format(hex=article.encode("utf-8").hex())
+
+        assert len(article.encode("utf-8")) < MAX_ARG_STRLEN
+        assert len(script.encode("utf-8")) > MAX_ARG_STRLEN
+
+    def test_the_macos_hex_at_least_doubles_a_real_article(self, tmp_path):
+        # The mechanism behind the test above, measured on the real fixture
+        # instead of a synthetic string. Machine-independent because it is a
+        # ratio: whatever the article weighs, the hex weighs twice that.
         from obsidian_to_substack.clipboard import _MACOS_SCRIPT
 
         html = self._article(tmp_path)
         script = _MACOS_SCRIPT.format(hex=html.encode("utf-8").hex())
 
-        assert len(script.encode("utf-8")) > 131072
+        assert len(script.encode("utf-8")) > 2 * len(html.encode("utf-8"))
 
     def test_cf_html_offsets_are_true_of_a_real_article(self, tmp_path):
         html = self._article(tmp_path)
