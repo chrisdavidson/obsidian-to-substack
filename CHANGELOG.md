@@ -5,6 +5,59 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] — 2026-09-03
+
+`--copy` no longer hangs forever on Wayland.
+
+v1.4 shipped the Wayland backend with `stderr=subprocess.PIPE`. A Wayland
+selection is owned by a live client, so wl-copy forks a daemon to serve the
+clipboard and the parent exits — and that daemon inherits the pipe and holds it
+open for as long as it owns the selection. `subprocess.run` waits for an EOF
+that cannot arrive, so every non-interactive `--copy` stalled after
+`article.html` was already written: the run looked finished and simply never
+returned. It only bites when stdout is not a terminal, which is why an
+interactive run looked fine and a piped or redirected one never came back.
+
+This is the hazard the X11 path was built around from the start, reintroduced
+verbatim because nothing asserted the rule on the Wayland side. v1.4's note
+about "comprehensive test coverage" for the Wayland backend was wrong in
+exactly that spot.
+
+### Fixed
+
+- **`--copy` completes on Wayland.** Both wl-copy calls — body to CLIPBOARD and
+  title to PRIMARY — now route through the same runner the X11 backend uses,
+  which sends stderr to a temp file rather than a pipe. Diagnostics still
+  survive; the descriptor the daemon inherits is no longer one anybody waits on.
+
+- **Two test assertions that were not asserting.**
+  `test_missing_wl_copy_exits_with_a_message` called `capsys.readouterr()`
+  twice, so its second check compared against an empty string and had never
+  run. `test_the_macos_script_is_too_long_for_argv` measured the torture
+  fixture against a fixed byte count, but the fixture shrinks when no TrueType
+  font resolves and `table_render` falls back to the bitmap default.
+
+### Changed
+
+- **The suite no longer reads the host's display server.** Seven tests patched
+  `sys.platform` to `"linux"` and asserted on xclip, but `_is_wayland()` reads
+  the real environment, so they were handed the wl-copy backend whenever the
+  suite ran on a Wayland desktop — passing under X11 and failing on the
+  author's own machine. An autouse fixture in a new `tests/conftest.py` clears
+  `WAYLAND_DISPLAY` and `XDG_SESSION_TYPE` suite-wide; the Wayland tests opt
+  back in explicitly. The suite is now 426 passing under Wayland, under X11,
+  and with neither variable set.
+
+### Technical Details
+
+- `_run_xclip` is renamed `_run_selection_owner` and is now shared by both
+  Linux backends. Two copies of the same judgement drifting apart is what
+  produced this defect, so the handling is one function rather than two.
+- New guards pin that neither Linux backend may hand a pipe to a
+  selection-owning tool, on body and title alike.
+- Verified end-to-end on a Wayland session: the command that hung now exits 0,
+  with the body on CLIPBOARD as `text/html` and the title on PRIMARY.
+
 ## [1.4] — 2026-08-30
 
 Native Wayland clipboard support with full PRIMARY/CLIPBOARD selection parity.
