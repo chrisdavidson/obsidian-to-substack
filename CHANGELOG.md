@@ -5,6 +5,62 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] — 2026-09-03
+
+Table images are rendered in a real typeface again.
+
+`table_render.FONT_CANDIDATES` is Debian's font layout plus one macOS path.
+Arch keeps the same Liberation faces in `/usr/share/fonts/liberation/` rather
+than `/usr/share/fonts/truetype/liberation/`, so every candidate missed, all
+four style variants fell to `ImageFont.load_default()`, and tables were
+published in Pillow's bitmap face on a machine with 798 fonts installed.
+
+**This was not cosmetic.** One bitmap font served all four styles, so a bold
+header row was not bold — and `load_default()` has no glyph for U+2011
+NON-BREAKING HYPHEN, which the corpus uses. A real published article rendered
+`Off‑the‑shelf`, `Non‑configurable`, `AI‑driven` and `End‑to‑end` as
+replacement boxes. Characters the author wrote did not reach the reader, which
+makes this a Core Value 2 failure sitting inside a Core Value 1 one.
+
+`FontSet` had no test coverage at all, which is how the assumption went
+unexamined for seven releases.
+
+### Fixed
+
+- **Fonts are resolved by asking fontconfig, not by guessing paths.** The order
+  is cheapest first: the known paths, then `fc-match` for DejaVu and Liberation
+  by name, then `fc-match` for whatever the machine calls `sans-serif`, then the
+  bitmap default. Layouts that already worked still cost no subprocess.
+
+  `fc-match` always answers — handed a family nobody has installed it returns a
+  substitute rather than nothing — so the reply is checked against the request.
+  Without that the first name in `FONT_FAMILIES` appears to win everywhere and
+  the preference order means nothing. Non-TrueType matches are refused before
+  Pillow can raise on them, and every failure path degrades rather than throws:
+  a table in a plainer font is a degraded article, an exception there is a lost
+  one.
+
+- **The bitmap warning survives as the loud last resort**, now fired once per
+  run rather than once per style variant, and naming what to install.
+
+### Changed
+
+- **The torture fixture carries a U+2011**, with a test pinning that it stays.
+  It is the construct that made this defect visible, and without it every font
+  test still passes while proving nothing about the case that actually shipped.
+
+### Technical Details
+
+- New `_fc_match(pattern, *, require_family=None)`; `FontSet._load` takes the
+  style so each variant is queried with its own fontconfig pattern bits. A bold
+  cell rendered in the regular face is a silent fidelity loss of exactly the
+  kind this project keeps finding.
+- Verified by rendering, not inference. On `equipment-qualification-taxonomy.md`
+  from the published-articles folder: 4 fallback warnings and a 1358×319 table
+  before, 0 warnings and a correct 2804×748 one after, with the non-breaking
+  hyphens rendering as hyphens.
+- 438 tests pass.
+
 ## [1.4.1] — 2026-09-03
 
 `--copy` no longer hangs forever on Wayland.
