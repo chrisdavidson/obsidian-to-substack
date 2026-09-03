@@ -469,3 +469,28 @@ class TestFontResolution:
             FontSet()
 
         assert caplog.text == ""
+
+    def test_the_torture_fixture_still_carries_a_glyph_the_fallback_lacks(self):
+        """Guard the guard: keep a character the bitmap default cannot draw.
+
+        The font fallback was found because a published table rendered
+        `Off\u2011the\u2011shelf` as `Off\u2591the\u2591shelf` -- Pillow's
+        `load_default()` has no glyph for U+2011 and drew replacement boxes.
+        That is what made this a fidelity defect and not a cosmetic one:
+        characters the author wrote did not reach the reader.
+
+        The fixture carries one so the construct stays represented end to end.
+        If it ever goes pure ASCII, every test above still passes while proving
+        nothing about the case that actually reached a live post -- the same
+        trap `test_a_real_article_carries_non_ascii` was written for.
+        """
+        fixture = (
+            Path(__file__).parent / "fixtures" / "torture_test" / "torture-test.md"
+        )
+        table_lines = [
+            line
+            for line in fixture.read_text(encoding="utf-8").splitlines()
+            if line.startswith("|")
+        ]
+
+        assert any("\u2011" in line for line in table_lines)

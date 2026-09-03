@@ -54,7 +54,7 @@ Ordered:
 
 | Left aligned | Centered | Right aligned |
 | :----------- | :------: | ------------: |
-| Plain cell | `code` | 1.00 |
+| Plain cell with an off‑the‑shelf non‑breaking hyphen | `code` | 1.00 |
 | **Bold cell** | *italic* | 22.50 |
 | A deliberately long cell that must wrap inside its column rather than stretching the table off the page | x | 333.75 |
 
