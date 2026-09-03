@@ -1,7 +1,10 @@
 """Tests for Markdown-table-to-PNG rendering (Phase 2, TBL-01..04, GRD-01)."""
 
+import logging
+import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from PIL import Image
@@ -296,3 +299,173 @@ class TestDatawrapperRemovalGuards:
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 2
+
+
+class TestFontResolution:
+    """How a TrueType face is found, and what happens when none is.
+
+    The hardcoded candidate list is Debian's layout plus one macOS path. On
+    Arch the same fonts live in `/usr/share/fonts/liberation/` rather than
+    `/usr/share/fonts/truetype/liberation/`, so every path missed, every
+    variant fell to `ImageFont.load_default()`, and tables rendered in a
+    bitmap face on a machine with 798 fonts installed. Nothing here covered
+    FontSet at all, which is how that survived.
+
+    Every test mocks the font environment rather than reading the host's.
+    These assertions must mean the same thing on the author's machine, on
+    Debian, and in a container with no fonts at all -- the display-server
+    leak in tests/conftest.py was the same class of mistake.
+    """
+
+    def _fc_output(self, family: str, file: str, fmt: str = "TrueType") -> str:
+        return f"{family}\n{file}\n{fmt}"
+
+    def test_a_hardcoded_path_is_used_without_consulting_fontconfig(self):
+        # The fast path. Where the existing layout already resolves, nothing
+        # changes and no subprocess is spawned.
+        from obsidian_to_substack.table_render import FontSet
+
+        with (
+            patch("obsidian_to_substack.table_render.Path.exists", return_value=True),
+            patch("obsidian_to_substack.table_render.ImageFont.truetype") as truetype,
+            patch("obsidian_to_substack.table_render._fc_match") as fc_match,
+        ):
+            FontSet()
+
+        assert truetype.called
+        assert not fc_match.called
+
+    def test_fontconfig_resolves_when_no_hardcoded_path_exists(self):
+        # The Arch case that started this: the paths are all wrong, but the
+        # font is right there and fontconfig knows where.
+        from obsidian_to_substack.table_render import FontSet
+
+        with (
+            patch("obsidian_to_substack.table_render.Path.exists", return_value=False),
+            patch("shutil.which", return_value="/usr/bin/fc-match"),
+            patch("subprocess.run") as run,
+            patch("obsidian_to_substack.table_render.ImageFont.truetype") as truetype,
+        ):
+            run.return_value.returncode = 0
+            run.return_value.stdout = self._fc_output(
+                "Liberation Sans", "/usr/share/fonts/liberation/LiberationSans-Regular.ttf"
+            )
+            FontSet()
+
+        assert truetype.called
+        loaded = {call.args[0] for call in truetype.call_args_list}
+        assert loaded == {"/usr/share/fonts/liberation/LiberationSans-Regular.ttf"}
+
+    def test_each_style_asks_fontconfig_for_that_style(self):
+        # A bold cell must not silently render regular. The style bits are
+        # the whole reason for querying per variant instead of once.
+        from obsidian_to_substack.table_render import FontSet
+
+        with (
+            patch("obsidian_to_substack.table_render.Path.exists", return_value=False),
+            patch("shutil.which", return_value="/usr/bin/fc-match"),
+            patch("subprocess.run") as run,
+            patch("obsidian_to_substack.table_render.ImageFont.truetype"),
+        ):
+            run.return_value.returncode = 0
+            run.return_value.stdout = self._fc_output("Liberation Sans", "/f.ttf")
+            FontSet()
+
+        patterns = " ".join(
+            str(call.args[0]) for call in run.call_args_list
+        )
+        assert ":bold:italic" in patterns
+        assert ":bold" in patterns
+        assert ":italic" in patterns
+
+    def test_a_substituted_family_is_not_mistaken_for_the_named_one(self):
+        # fc-match always answers. Asked for a family nobody has installed it
+        # returns its best guess rather than nothing, so the reply has to be
+        # checked against the request -- otherwise the first name in the
+        # preference list always appears to win and the ordering is a lie.
+        from obsidian_to_substack.table_render import _fc_match
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/fc-match"),
+            patch("subprocess.run") as run,
+        ):
+            run.return_value.returncode = 0
+            run.return_value.stdout = self._fc_output("Liberation Sans", "/lib.ttf")
+
+            assert _fc_match("DejaVu Sans", require_family="DejaVu Sans") is None
+            assert _fc_match("Liberation Sans", require_family="Liberation Sans") == "/lib.ttf"
+            # The generic query takes whatever fontconfig considers best.
+            assert _fc_match("sans-serif") == "/lib.ttf"
+
+    def test_a_non_truetype_match_is_refused(self):
+        # Pillow's truetype() cannot open a bitmap or Type1 face. Handing it
+        # one raises where returning None would have fallen through cleanly.
+        from obsidian_to_substack.table_render import _fc_match
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/fc-match"),
+            patch("subprocess.run") as run,
+        ):
+            run.return_value.returncode = 0
+            run.return_value.stdout = self._fc_output("Fixed", "/f.pcf", fmt="PCF")
+
+            assert _fc_match("sans-serif") is None
+
+    def test_missing_fontconfig_is_not_an_error(self):
+        from obsidian_to_substack.table_render import _fc_match
+
+        with patch("shutil.which", return_value=None), patch("subprocess.run") as run:
+            assert _fc_match("sans-serif") is None
+            assert not run.called
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            OSError("boom"),
+            subprocess.TimeoutExpired(cmd="fc-match", timeout=5),
+            subprocess.CalledProcessError(1, "fc-match"),
+        ],
+    )
+    def test_a_broken_fontconfig_is_not_fatal(self, failure):
+        # Rendering a table without the nicest font is a degraded article.
+        # Crashing the conversion over it is a lost one.
+        from obsidian_to_substack.table_render import _fc_match
+
+        with (
+            patch("shutil.which", return_value="/usr/bin/fc-match"),
+            patch("subprocess.run", side_effect=failure),
+        ):
+            assert _fc_match("sans-serif") is None
+
+    def test_the_bitmap_fallback_still_warns_when_nothing_resolves(self, caplog):
+        # The last resort has to stay loud: this is the state that silently
+        # degraded every published table.
+        from obsidian_to_substack.table_render import FontSet
+
+        with (
+            patch("obsidian_to_substack.table_render.Path.exists", return_value=False),
+            patch("shutil.which", return_value=None),
+            caplog.at_level(logging.WARNING),
+        ):
+            FontSet()
+
+        assert "No TrueType font" in caplog.text
+
+    def test_a_resolved_font_is_reported_once_not_per_variant(self, caplog):
+        # Four variants resolve per FontSet. Logging each one turns a normal
+        # run into four lines of noise in a tool whose output the author
+        # actually reads.
+        from obsidian_to_substack.table_render import FontSet
+
+        with (
+            patch("obsidian_to_substack.table_render.Path.exists", return_value=False),
+            patch("shutil.which", return_value="/usr/bin/fc-match"),
+            patch("subprocess.run") as run,
+            patch("obsidian_to_substack.table_render.ImageFont.truetype"),
+            caplog.at_level(logging.WARNING),
+        ):
+            run.return_value.returncode = 0
+            run.return_value.stdout = self._fc_output("Liberation Sans", "/f.ttf")
+            FontSet()
+
+        assert caplog.text == ""
