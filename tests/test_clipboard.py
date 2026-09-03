@@ -10,6 +10,7 @@ not prove a clipboard was written, and no amount of them ever will.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -188,6 +189,42 @@ class TestWaylandBackend:
 
         assert run.call_args.kwargs.get("input") is not None
         assert b"<p>hello</p>" in run.call_args.kwargs["input"]
+
+    def test_wl_copy_stdio_is_not_inherited(self):
+        """wl-copy must not inherit our stdout/stderr.
+
+        The same stall as X11, from the same cause. A Wayland selection is
+        owned by a live client, so wl-copy forks a background daemon to serve
+        the clipboard and the parent exits immediately. That daemon holds any
+        inherited descriptor open for as long as it owns the selection, so a
+        `stderr=PIPE` never reaches EOF and subprocess.run waits on a close
+        that cannot come. The article has already been written to disk by
+        then, so the run looks finished and simply never returns.
+
+        It only bites when our output is not a terminal -- an interactive run
+        looks fine and a piped or redirected one hangs forever, which is what
+        made it survive a release.
+
+        The X11 path was built around this from the start (see
+        TestCopyHtmlToClipboard.test_xclip_stdio_is_not_inherited in
+        test_convert.py). Nothing asserted the rule on this side, and the
+        Wayland backend reintroduced the hazard verbatim. It is asserted on
+        both Linux backends now, so the next one cannot drift either.
+        """
+        with (
+            patch("sys.platform", "linux"),
+            patch.dict("os.environ", {"XDG_SESSION_TYPE": "wayland"}, clear=False),
+            patch("shutil.which", return_value="/usr/bin/wl-copy"),
+            patch("subprocess.run") as run,
+        ):
+            copy_html("<p>hello</p>")
+
+        kwargs = run.call_args[1]
+        assert kwargs["stdout"] is subprocess.DEVNULL
+        # Not None (inherit), and not PIPE — reading a pipe to EOF is the
+        # stall itself, since the daemon child holds the write end open.
+        assert kwargs["stderr"] is not None
+        assert kwargs["stderr"] is not subprocess.PIPE
 
     def test_missing_wl_copy_exits_with_a_message(self, capsys):
         with (
@@ -481,3 +518,20 @@ class TestTitleHandoff:
             copy_title("")
 
         assert not run.called
+
+    def test_wayland_title_stdio_is_not_inherited(self):
+        # PRIMARY is served by a forked wl-copy daemon exactly as CLIPBOARD is,
+        # so the title hand-off carries the same stall. See
+        # TestWaylandBackend.test_wl_copy_stdio_is_not_inherited.
+        with (
+            patch("sys.platform", "linux"),
+            patch.dict("os.environ", {"XDG_SESSION_TYPE": "wayland"}, clear=False),
+            patch("shutil.which", return_value="/usr/bin/wl-copy"),
+            patch("subprocess.run") as run,
+        ):
+            copy_title("A Title")
+
+        kwargs = run.call_args[1]
+        assert kwargs["stdout"] is subprocess.DEVNULL
+        assert kwargs["stderr"] is not None
+        assert kwargs["stderr"] is not subprocess.PIPE
