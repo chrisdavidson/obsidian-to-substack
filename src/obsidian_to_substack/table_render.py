@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,6 +41,25 @@ FONT_CANDIDATES = {
         "/usr/share/fonts/truetype/liberation/LiberationSans-BoldItalic.ttf",
     ),
 }
+
+# Families to prefer, in order, when the paths above all miss. These are the
+# same two the hardcoded list prefers -- asking fontconfig for them by name
+# keeps a table rendering in the same typeface it always did, rather than
+# switching to whatever a given desktop calls "sans-serif".
+FONT_FAMILIES = ("DejaVu Sans", "Liberation Sans")
+
+# fontconfig pattern suffixes per style variant. Queried per variant rather
+# than once, because a bold cell rendered in the regular face is a silent
+# fidelity loss of exactly the kind this project keeps finding.
+FC_STYLE_PATTERNS = {
+    "regular": "",
+    "bold": ":bold",
+    "italic": ":italic",
+    "bolditalic": ":bold:italic",
+}
+
+# fc-match answers in this order, one field per line.
+_FC_FORMAT = "%{family}\n%{file}\n%{fontformat}"
 
 # Visual constants — tuned to read like body text in the Substack composer.
 #
@@ -81,25 +102,129 @@ class Span:
         return "regular"
 
 
+def _fc_match(pattern: str, *, require_family: str | None = None) -> str | None:
+    """Ask fontconfig for the file backing `pattern`. The path, or None.
+
+    Exists because hardcoding font paths does not survive contact with a
+    second distribution. The candidate list above is Debian's layout; Arch
+    keeps the same Liberation faces in `/usr/share/fonts/liberation/`, so
+    every path missed and every table rendered in Pillow's bitmap default on
+    a machine with hundreds of fonts installed. fontconfig is the component
+    whose entire job is answering this question, and it is present wherever
+    a desktop is.
+
+    **fc-match always answers.** Handed a family nobody has installed it
+    returns its best substitute rather than nothing or an error, so a reply
+    is only evidence of the family it was asked for if it is compared against
+    the request -- which is what `require_family` does. Without that check the
+    first name in FONT_FAMILIES appears to win everywhere and the preference
+    order silently means nothing. Do not drop it as redundant.
+
+    Non-TrueType matches are refused here rather than passed on, because
+    `ImageFont.truetype` raises on a bitmap or Type1 face where returning
+    None falls through to the next candidate cleanly.
+
+    Every failure returns None. A table in a plainer font is a degraded
+    article; an exception out of here is a lost one.
+
+    Unlike the clipboard backends, PIPE is safe: fc-match writes its answer
+    and exits, forking no daemon that would hold the descriptor open.
+    """
+    if not shutil.which("fc-match"):
+        return None
+
+    try:
+        result = subprocess.run(
+            ["fc-match", "-f", _FC_FORMAT, pattern],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    fields = (result.stdout or "").split("\n")
+    if len(fields) < 3:
+        return None
+
+    family, path, fontformat = (field.strip() for field in fields[:3])
+
+    if not path or fontformat != "TrueType":
+        return None
+
+    # fontconfig reports a family as a comma-joined list of its aliases
+    # ("DejaVu Sans,DejaVu Sans Book"), so this is a containment test.
+    if require_family and require_family.lower() not in family.lower():
+        return None
+
+    return path
+
+
 class FontSet:
     """Resolve the four style variants once, with a graceful fallback."""
 
     def __init__(self, size: int = FONT_SIZE) -> None:
         self.size = size
-        self.fonts = {
-            style: self._load(paths, size) for style, paths in FONT_CANDIDATES.items()
-        }
+        self.fonts = {}
+        unresolved = []
+
+        for style, paths in FONT_CANDIDATES.items():
+            font = self._load(paths, style, size)
+            if font is None:
+                unresolved.append(style)
+                font = ImageFont.load_default()
+            self.fonts[style] = font
+
+        # One warning for the run, not one per variant. Four lines of it
+        # would be noise in output the author actually reads, and this state
+        # needs to stay legible -- it is the one that silently rendered every
+        # published table in a bitmap face.
+        if unresolved:
+            logger.warning(
+                "No TrueType font found for %s; falling back to the bitmap "
+                "default. Install DejaVu or Liberation Sans, or fontconfig "
+                "(fc-match), for properly rendered tables.",
+                ", ".join(unresolved),
+            )
 
     @staticmethod
-    def _load(paths: tuple[str, ...], size: int):
+    def _load(paths: tuple[str, ...], style: str, size: int):
+        """The resolution order, cheapest first. None if nothing worked.
+
+        Known paths before fontconfig so the common layouts cost no
+        subprocess, then fontconfig for the preferred families by name, then
+        fontconfig for whatever this machine calls sans-serif. Only after all
+        three does the caller reach for the bitmap default.
+        """
         for path in paths:
             if Path(path).exists():
                 try:
                     return ImageFont.truetype(path, size)
                 except OSError:
                     continue
-        logger.warning("No TrueType font found; falling back to the bitmap default")
-        return ImageFont.load_default()
+
+        suffix = FC_STYLE_PATTERNS.get(style, "")
+
+        for family in FONT_FAMILIES:
+            found = _fc_match(f"{family}{suffix}", require_family=family)
+            if found:
+                try:
+                    return ImageFont.truetype(found, size)
+                except OSError:
+                    continue
+
+        found = _fc_match(f"sans-serif{suffix}")
+        if found:
+            try:
+                return ImageFont.truetype(found, size)
+            except OSError:
+                pass
+
+        return None
 
     def get(self, style: str):
         return self.fonts.get(style, self.fonts["regular"])
