@@ -5,6 +5,66 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] — 2026-09-03
+
+The PAUSE is lifted. **No code changed in this release** — it records a
+verification, which for this project is the thing that has always been scarce.
+
+### The evidence
+
+The 2026-08-11 altitude check returned PAUSE and had stayed open through five
+releases. Its terms were specific: it lifts when a real article goes through the
+pipeline and the author records whether the composer needed touching.
+
+On 2026-09-03 that happened. *Proactively manage regression(s)* — selected by
+sweeping the published-articles folder for an article that converts with **zero
+preflight warnings** and contains a table — was converted, copied to the
+clipboard, and pasted into a Substack draft. It **needed no modification in the
+composer.**
+
+That matters more than a passing suite. Every genuine defect in this project's
+history was found by a live paste or a real run, and the two fixed earlier the
+same day make the point: the Wayland hang was found by running the tool, and the
+font fallback by *looking at a rendered table*. Both were invisible to all 438
+tests. Core Value 2's claim no longer rests only on fixtures and a corpus sweep,
+and Core Value 1 is confirmed on the same evidence — the article carried a 13x5
+table that survived as an image without repair.
+
+### Also on the record from that day
+
+- **The v1.2 gate proved itself unprompted.** During the sweep it refused
+  `equipment-qualification-taxonomy` on a `slug_title` warning without being
+  asked to. That is the gate working in the wild rather than in a test.
+- **v1.4.1 and v1.4.2 were cut while the PAUSE was still open**, knowingly and
+  at the author's direction after it was surfaced. A decision, on the record.
+
+### Changed
+
+- **`CLAUDE.md` describes the project as it currently is.** It had called v1.3.1
+  the current release through three further releases — the same
+  self-description-goes-stale pattern the file itself warns about two sections
+  lower. Corrected against measured values: the release list now runs to v1.4.2,
+  the test count 406 -> 438, the module count eleven -> twelve, ~2,400 lines ->
+  ~3,900. The documented test command was `uv run pytest -q`, which **fails to
+  spawn** — there is no bare `pytest` on this machine; it is now
+  `uv run --extra dev pytest -q`. The GSD entry points named `/gsd-*` where this
+  install uses `/bm:*`. A backlog item closed on 2026-08-11 was still listed as
+  live.
+
+- **One standing pattern added**, earned twice in one day: *an assumption about
+  the machine is a defect waiting for a different machine.* Hardcoded font paths
+  were one distribution's layout; seven tests read the host's display server.
+  Both passed everywhere they had been run and failed the moment the environment
+  changed. Ask the system, or neutralize it — do not encode one machine's answer.
+
+### Still open
+
+Tables published **before v1.4.2** may carry replacement boxes wherever the
+source used U+2011 or another glyph the bitmap default lacks —
+`equipment-qualification-taxonomy` alone has 27. Nothing in the pipeline can
+detect this after the fact, and the 2026-09-03 paste does not settle it: that
+check is about the back catalogue, not a fresh conversion.
+
 ## [1.4.2] — 2026-09-03
 
 Table images are rendered in a real typeface again.

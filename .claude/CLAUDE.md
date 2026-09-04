@@ -74,23 +74,36 @@ macOS or Windows user, a defect in a live paste — not planning. The one backlo
 section used to name — define the fidelity corpus — was closed on 2026-08-11 (`260811-crp`)
 and the sweep re-baselined to 43/43; see the Architecture section.
 
-**The 2026-08-11 altitude check returned PAUSE, and it is open.** Nothing has been published
-through the pipeline since v1.2, while v1.2, v1.3, v1.3.1, v1.4, v1.4.1 and v1.4.2 have all
-shipped. Every genuine defect in this project's history was found by a live paste or a real
-run, and 2026-09-03 made that concrete twice over: the Wayland hang was found by running the
-tool, and the font fallback was found by *looking at a rendered table*, not by any check the
-project owns. It lifts when a real article goes through and the author records whether the
-composer needed touching.
+**The 2026-08-11 altitude check returned PAUSE. It was LIFTED on 2026-09-03**, by the
+evidence it always asked for. The author pasted a real article — *Proactively manage
+regression(s)*, selected by sweeping the published-articles folder for one that converts
+with zero preflight warnings and contains a table — into a Substack draft and **needed no
+modification in the composer.** Recorded in the author's words: "it works, i did not have
+to do any modification after the paste."
 
-**v1.4.1 and v1.4.2 were both cut against it knowingly, at the author's direction
-(2026-09-03), after it was surfaced.** That is a decision on the record, not the rule
-lapsing. The rule stands: take small maintenance work if asked; do not cut another release
-against it without saying this out loud.
+That is the first live-paste verification since v1.2, and it closes the gap the PAUSE
+named: Core Value 2's claim no longer rests only on fixtures and a corpus sweep. Core Value
+1 is confirmed on the same evidence — the article carried a 13x5 table, which survived as
+an image without repair.
 
-**A second question now rides along with it.** Tables published before v1.4.2 may carry
+**What the PAUSE was for, and why it stays worth reinstating.** Every genuine defect in
+this project's history was found by a live paste or a real run, and 2026-09-03 made that
+concrete twice over before the paste even happened: the Wayland hang was found by running
+the tool, and the font fallback by *looking at a rendered table* — not by any check the
+project owns. Both were invisible to the whole test suite. If releases start stacking up
+again without a live paste behind them, re-open it.
+
+**Two things on the record from that day.** v1.4.1 and v1.4.2 were cut while the PAUSE was
+still open, knowingly and at the author's direction after it was surfaced — a decision, not
+the rule lapsing. And the v1.2 gate proved itself unprompted during the sweep: it refused
+`equipment-qualification-taxonomy` on a `slug_title` warning without being asked to.
+
+**One question from that day is still open.** Tables published *before* v1.4.2 may carry
 replacement boxes wherever the source used U+2011 or another glyph the bitmap default
-lacks. Nothing in the pipeline can detect that after the fact — it needs the author to look
-at a live post, which is the same sitting that lifts the PAUSE.
+lacks; `equipment-qualification-taxonomy` alone has 27 of them. Nothing in the pipeline can
+detect this after the fact — it needs the author to look at an already-published post. The
+2026-09-03 paste does not settle it, because that check is about the back catalogue, not
+about a fresh conversion.
 
 Three limitations are recorded rather than absorbed: the title is placed by hand (Substack
 never fills its title field from pasted body content), image alignment is not controllable
