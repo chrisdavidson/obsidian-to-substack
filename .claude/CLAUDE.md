@@ -28,7 +28,7 @@ comment content) reached a live published post without the author noticing on re
 
 ### Current State
 
-**v1.3.1 shipped 2026-08-11**, the current release. Five public releases so far, each one
+**v1.4.2 shipped 2026-09-03**, the current release. Eight public releases so far, each one
 tagged with a wheel and sdist attached, none of them on PyPI:
 
 - **v1.0 (2026-08-08)** — 21/21 requirements, audit passed. Core Value 1 met: tables, SVG
@@ -46,6 +46,21 @@ tagged with a wheel and sdist attached, none of them on PyPI:
   table PNGs were written and referenced but reported nowhere; a Core Value 2 defect in
   the reporting surface, found from the consumer side because preflight's `missing_image`
   only fires for a src *absent* from the output directory. First three-part tag.
+- **v1.4 (2026-08-30)** — a native Wayland `--copy` backend via `wl-copy`, body to
+  CLIPBOARD and title to PRIMARY. It shipped with the defect v1.4.1 fixes, and its own
+  release notes claimed "comprehensive test coverage" for exactly the spot that had none.
+- **v1.4.1 (2026-09-03)** — `--copy` stopped hanging forever on Wayland. `wl-copy` forks
+  a daemon to own the selection and inherits whatever descriptors it is given; the backend
+  handed it `stderr=PIPE`, so `subprocess.run` waited on an EOF that could not arrive and
+  every non-interactive run stalled *after* `article.html` was written. Both Linux backends
+  now share `_run_selection_owner`. Also: the suite had been reading its host's display
+  server, passing under X11 and failing under Wayland.
+- **v1.4.2 (2026-09-03)** — table images render in a real typeface again. `FONT_CANDIDATES`
+  was Debian's layout plus one macOS path, so on Arch every candidate missed and all four
+  style variants fell to Pillow's bitmap default. Not cosmetic: `load_default()` has no
+  glyph for U+2011, which the corpus uses, so a published table drew `Off‑the‑shelf` as
+  replacement boxes. Fonts now come from fontconfig. `FontSet` had no tests at all, which
+  is how that survived seven releases.
 
 The fix history that once lived only in the author's memory is `docs/FINDINGS-MANUAL.md`,
 regenerated into `docs/FINDINGS.md` by `tools/substack_diff`.
@@ -55,16 +70,27 @@ of 2026-08-11**, not a lull: the vault is an interface the author edits for unre
 reasons, so defects arrive on a schedule no roadmap controls. Separately, **quick tasks, not
 the phase pipeline, is also a recorded decision** — `.planning/phases/` will not exist and
 audits verify from primary evidence. What would change either is evidence — a report from a
-macOS or Windows user, a defect in a live paste — not planning. One live backlog item exists
-(define the fidelity corpus); it is maintenance work with a decision attached.
+macOS or Windows user, a defect in a live paste — not planning. The one backlog item this
+section used to name — define the fidelity corpus — was closed on 2026-08-11 (`260811-crp`)
+and the sweep re-baselined to 43/43; see the Architecture section.
 
 **The 2026-08-11 altitude check returned PAUSE, and it is open.** Nothing has been published
-through the pipeline since v1.2, while v1.2, v1.3 and v1.3.1 all shipped. Every genuine
-defect in this project's history was found by a live paste or a real run, so Core Value 2's
-claim currently rests on fixtures and a corpus sweep with a known-wrong denominator. It lifts
-when a real article goes through and the author records whether the composer needed touching.
-Take small maintenance work if asked; do not cut another release against it without saying
-this out loud.
+through the pipeline since v1.2, while v1.2, v1.3, v1.3.1, v1.4, v1.4.1 and v1.4.2 have all
+shipped. Every genuine defect in this project's history was found by a live paste or a real
+run, and 2026-09-03 made that concrete twice over: the Wayland hang was found by running the
+tool, and the font fallback was found by *looking at a rendered table*, not by any check the
+project owns. It lifts when a real article goes through and the author records whether the
+composer needed touching.
+
+**v1.4.1 and v1.4.2 were both cut against it knowingly, at the author's direction
+(2026-09-03), after it was surfaced.** That is a decision on the record, not the rule
+lapsing. The rule stands: take small maintenance work if asked; do not cut another release
+against it without saying this out loud.
+
+**A second question now rides along with it.** Tables published before v1.4.2 may carry
+replacement boxes wherever the source used U+2011 or another glyph the bitmap default
+lacks. Nothing in the pipeline can detect that after the fact — it needs the author to look
+at a live post, which is the same sitting that lifts the PAUSE.
 
 Three limitations are recorded rather than absorbed: the title is placed by hand (Substack
 never fills its title field from pasted body content), image alignment is not controllable
@@ -73,8 +99,18 @@ unverified on their target platforms.
 
 **A standing pattern worth knowing before you change a code path:** the tool's
 self-description does not travel with it. `__version__` sat at `1.0.0` through two
-releases, and a help string has now gone stale twice — `--svg-dir` at `96ff451`,
-`--copy` at v1.3. Nothing in the suite asserts on either, by choice.
+releases, a help string has gone stale twice — `--svg-dir` at `96ff451`, `--copy` at v1.3 —
+`uv.lock` was left at `1.3.1` by the v1.4 bump, and this file itself described v1.3.1 as
+current through three further releases. Nothing in the suite asserts on any of it, by
+choice. Move `pyproject.toml`, `__init__.py` and `uv.lock` together, and re-read this
+section when you cut a release.
+
+**A second standing pattern, added 2026-09-03: an assumption about the machine is a defect
+waiting for a different machine.** Hardcoded font paths were one distribution's layout.
+Seven tests read the host's display server. Both passed everywhere they had been run and
+failed the moment the environment changed. Where code or a test depends on the environment,
+ask the system (fontconfig) or neutralize it (`tests/conftest.py`) — do not encode one
+machine's answer.
 
 ### Constraints
 
@@ -89,11 +125,16 @@ releases, and a help string has now gone stale twice — `--svg-dir` at `96ff451
   `article.html`. Reach for the cheap mechanical check first
 
 - **Platform**: `--copy` dispatches per platform in `clipboard.py` — `xclip` on Linux/X11,
-  `osascript` on macOS, PowerShell CF_HTML on Windows (2026-08-10, author's request).
-  **Only the Linux path is verified.** The other two have never run on their target
-  platforms; the author has neither machine, so unlike Substack's rendering there is no
-  human who can settle them. Their tests prove the right bytes reach the right tool and
-  nothing more — do not describe them as working. The title hand-off stays Linux-only by
+  `wl-copy` on Linux/Wayland, `osascript` on macOS, PowerShell CF_HTML on Windows.
+  **Only the Linux paths are verified.** Both Linux backends share `_run_selection_owner`,
+  which keeps stderr off a pipe: xclip and wl-copy each fork a daemon to own the selection,
+  and a daemon holding an inherited pipe open is what hung every scripted `--copy` in v1.4.
+  Do not give either one `stderr=PIPE`; macOS and Windows may, and do.
+
+  The macOS and Windows backends have never run on their target platforms; the author has
+  neither machine, so unlike Substack's rendering there is no human who can settle them.
+  Their tests prove the right bytes reach the right tool and nothing more — do not
+  describe them as working. The title hand-off stays Linux-only by
   design: macOS and Windows have one clipboard and it holds the body. **Do not extend these
   backends** (decided 2026-08-11): shipping them was the named-person gate working, but
   building further on permanently unverifiable code is that gate lapsing. Re-opens on a
@@ -110,9 +151,12 @@ releases, and a help string has now gone stale twice — `--svg-dir` at `96ff451
   headed to GitHub and planning is local workflow state. GSD commit steps on planning
   files are expected no-ops.
 
-- **Testing**: 406 tests currently pass (`uv run pytest -q`); new defects get pinned by
-  tests, per the author's "fixes + automated guards" decision. This count goes stale —
-  run the suite rather than trusting the number.
+- **Testing**: 438 tests currently pass (`uv run --extra dev pytest -q` — the bare
+  `pytest` is not on PATH); new defects get pinned by tests, per the author's "fixes +
+  automated guards" decision. This count goes stale — run the suite rather than trusting
+  the number. **Tests must not read their host**: `tests/conftest.py` clears the
+  display-server variables suite-wide, and an assertion measured against a
+  machine-dependent quantity is a defect even when it passes here.
 
 - **Vault content**: article prose never enters this repo; tests use synthetic fixtures.
   The vault is also unversioned — never bulk-write to it.
@@ -189,7 +233,7 @@ so rather than hand-editing it.
 
 ## Architecture
 
-One package, `src/obsidian_to_substack/`, ~2,400 lines across eleven focused modules.
+One package, `src/obsidian_to_substack/`, ~3,900 lines across twelve focused modules.
 `convert.py` is the orchestrator and CLI; everything else is a transformation it calls in
 sequence. Full detail in `.planning/ARCHITECTURE.md`.
 
@@ -324,9 +368,14 @@ Before using Edit, Write, or other file-changing tools, start work through a GSD
 
 Use these entry points:
 
-- `/gsd-quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd-debug` for investigation and bug fixing
-- `/gsd-execute-phase` for planned phase work
+- `/bm:quick` for small fixes, doc updates, and ad-hoc tasks
+- `/bm:debug` for investigation and bug fixing
+- `/bm:execute-phase` for planned phase work
+
+`.planning/` was reconstructed on 2026-09-03 from this file, CHANGELOG.md and git history
+after it was found missing from the checkout; before that these commands failed their
+ROADMAP.md gate. It is gitignored, so it does not travel with a clone — expect to rebuild
+it on a fresh machine rather than assuming it is there.
 
 Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
 <!-- GSD:workflow-end -->
