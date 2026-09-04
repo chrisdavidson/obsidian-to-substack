@@ -98,12 +98,19 @@ still open, knowingly and at the author's direction after it was surfaced — a 
 the rule lapsing. And the v1.2 gate proved itself unprompted during the sweep: it refused
 `equipment-qualification-taxonomy` on a `slug_title` warning without being asked to.
 
-**One question from that day is still open.** Tables published *before* v1.4.2 may carry
-replacement boxes wherever the source used U+2011 or another glyph the bitmap default
-lacks; `equipment-qualification-taxonomy` alone has 27 of them. Nothing in the pipeline can
-detect this after the fact — it needs the author to look at an already-published post. The
-2026-09-03 paste does not settle it, because that check is about the back catalogue, not
-about a fresh conversion.
+**The back catalogue is out of scope — closed, not deferred (2026-09-03).** Tables published
+*before* v1.4.2 may carry replacement boxes wherever the source used U+2011 or another glyph
+the bitmap default lacks; `equipment-qualification-taxonomy` alone has 27. The author's
+decision is **forward-only**: already-published posts are not being audited or re-pasted.
+
+Do not re-raise this as a finding. It is not an unknown — the cause is understood, the
+affected articles are identifiable by grepping the vault for the character, and the fix
+would be a re-paste. It was weighed and declined. What would re-open it is the author
+saying so, not a fresh discovery of the same fact.
+
+This is the same shape as the PyPI decision: a thing that *could* be done, deliberately not
+being done, recorded here so the reasoning does not have to be rebuilt each time someone
+notices it.
 
 Three limitations are recorded rather than absorbed: the title is placed by hand (Substack
 never fills its title field from pasted body content), image alignment is not controllable
