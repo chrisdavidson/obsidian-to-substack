@@ -47,6 +47,15 @@ Point it at a directory of Obsidian articles:
 obsidian-to-substack ~/vault/articles
 ```
 
+The directory defaults to the current one, so from inside a drafts folder a
+single article is just:
+
+```bash
+obsidian-to-substack --copy --file my-article.md
+```
+
+`--file` resolves relative to the directory; an absolute path is used as-is.
+
 Each `.md` file becomes a folder under `./output/<slug>/` containing:
 
 | File | What it is |
@@ -115,7 +124,8 @@ legitimate titles.
 | Flag | Default | Description |
 | --- | --- | --- |
 | `--output-dir` | `./output` | Where converted articles are written |
-| `--file` | — | Process a single `.md` file instead of the whole directory |
+| `directory` (positional) | `.` | Directory of Obsidian articles to process |
+| `--file` | — | Process a single `.md` file instead of the whole directory; relative to `directory`, or an absolute path |
 | `--svg-dir` | `<directory>/svg/<slug>/` if it exists, else `<directory>/svg/` | Override the SVG source directory |
 | `--dpi` | `192` | PNG export resolution |
 | `--copy` | off | Body HTML to the clipboard. On Linux (X11 and Wayland) the title also goes to the primary selection; on macOS and Windows it is printed instead, since those have only one clipboard. Requires `xclip` on X11, `wl-copy` on Wayland, `osascript` on macOS, or PowerShell on Windows. Refuses (exit 1, writes nothing) if preflight found a warning on the article — see `--force` |

@@ -268,7 +268,7 @@ wheels = [
 
 [[package]]
 name = "obsidian-to-substack"
-version = "1.4.3"
+version = "1.4.4"
 source = { editable = "." }
 dependencies = [
     { name = "beautifulsoup4" },

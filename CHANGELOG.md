@@ -5,6 +5,27 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.4] — 2026-10-04
+
+### Changed
+
+- **The `directory` argument is now optional and defaults to the current
+  directory.** `obsidian-to-substack --copy --file my-article.md` run from inside
+  a drafts folder used to stop in argparse with *"the following arguments are
+  required: directory"* before reading anything. Passing a directory explicitly
+  still works, before or after the options, and `--file` still accepts a
+  relative subpath or an absolute path.
+
+### Fixed
+
+- **GRD-02 false positive on titles containing an apostrophe.** The resolved
+  title is read back from rendered HTML, where smarty has curled `Agent's` into
+  `Agent’s`, but the source H1 keeps the straight apostrophe. The title-span
+  match did not fold the two (word tokenizing already did), so the intentional
+  removal of the duplicate title H1 was reported as dropped text and `--copy`
+  refused. Found on a real draft, *The Report Is Not the Run: What Tracing an
+  Agent's Execution Path Revealed*, which now converts with zero warnings.
+
 ## [1.4.3] — 2026-09-03
 
 The PAUSE is lifted. **No code changed in this release** — it records a
