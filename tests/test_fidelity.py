@@ -181,6 +181,20 @@ class TestLegitimateRemovals:
         assert report.is_clean, f"false positive: {report.unaccounted}"
         assert "title" in report.reasons_used
 
+    def test_stripped_title_with_apostrophe_is_accounted_for(self):
+        # The resolved title is read from rendered HTML, where smarty has
+        # curled the apostrophe; the source H1 keeps the straight one. Found
+        # on a real draft whose --copy was refused by this false positive.
+        source = "# What an Agent's Path Revealed\n\nBody paragraph.\n"
+        html = "<html><body><p>Body paragraph.</p></body></html>"
+
+        report = compare(
+            source, html, resolved_title="What an Agent’s Path Revealed"
+        )
+
+        assert report.is_clean, f"false positive: {report.unaccounted}"
+        assert "title" in report.reasons_used
+
     def test_table_text_is_reconciled_against_extracted_cells(self):
         # Table prose is RELOCATED into the PNG/CSV, not vanished. It is
         # accounted for only because the cell text is held in hand.

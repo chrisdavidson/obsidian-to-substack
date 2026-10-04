@@ -703,4 +703,9 @@ def _leading_title_span(source: str, resolved_title: str) -> tuple[int, int] | N
 
 
 def _normalized(text: str) -> str:
-    return " ".join(WORD_PATTERN.findall(text)).casefold()
+    # Fold the curly apostrophe exactly as `tokenize` does. The resolved title
+    # is read back from rendered HTML, where smarty has already curled
+    # `Agent's` into `Agent’s`; the source H1 still has the straight one, so
+    # without the fold the title never matches and its intended removal is
+    # reported as lost text (GRD-02).
+    return " ".join(WORD_PATTERN.findall(text)).replace("’", "'").casefold()
