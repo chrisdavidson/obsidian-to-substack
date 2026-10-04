@@ -474,7 +474,12 @@ def main() -> None:
     )
     parser.add_argument(
         "directory",
-        help="Path to Obsidian article directory to process",
+        nargs="?",
+        default=".",
+        help=(
+            "Path to Obsidian article directory to process "
+            "(default: the current directory)"
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -494,7 +499,10 @@ def main() -> None:
         "--file",
         default=None,
         dest="single_file",
-        help="Process a single .md file instead of whole directory",
+        help=(
+            "Process a single .md file instead of whole directory "
+            "(resolved relative to <directory>; an absolute path is used as-is)"
+        ),
     )
     parser.add_argument(
         "--dpi",

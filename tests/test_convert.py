@@ -1116,3 +1116,103 @@ class TestDryRunImageRefs:
         result = referenced_svgs(text_copy)
         assert text_copy == original
         assert result == ["a.svg", "b.svg"]
+
+
+class TestDefaultDirectory:
+    """The positional ``directory`` defaults to the current directory.
+
+    Before this, ``obsidian-to-substack --copy --file x.md`` failed in
+    argparse with "the following arguments are required: directory" --
+    the natural invocation from inside a drafts folder did not work.
+    """
+
+    @staticmethod
+    def _write(path, name="my-article.md"):
+        path.mkdir(parents=True, exist_ok=True)
+        article = path / name
+        article.write_text("# My Article\n\nBody.\n", encoding="utf-8")
+        return article
+
+    @staticmethod
+    def _run(monkeypatch, *args):
+        monkeypatch.setattr(sys, "argv", ["obsidian-to-substack", *args])
+        main()
+
+    def test_file_without_directory_resolves_against_cwd(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        self._write(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        self._run(monkeypatch, "--file", "my-article.md", "--dry-run")
+        assert "[DRY RUN] my-article" in capsys.readouterr().out
+
+    def test_no_directory_no_file_converts_cwd(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        self._write(tmp_path, "one.md")
+        self._write(tmp_path, "two.md")
+        monkeypatch.chdir(tmp_path)
+        self._run(monkeypatch, "--dry-run")
+        out = capsys.readouterr().out
+        assert "[DRY RUN] one" in out
+        assert "[DRY RUN] two" in out
+
+    def test_explicit_directory_still_wins(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        drafts = tmp_path / "drafts"
+        self._write(drafts)
+        monkeypatch.chdir(tmp_path)  # cwd has no article
+        self._run(
+            monkeypatch, str(drafts), "--file", "my-article.md", "--dry-run"
+        )
+        assert "[DRY RUN] my-article" in capsys.readouterr().out
+
+    def test_directory_after_options(self, tmp_path, monkeypatch, capsys):
+        drafts = tmp_path / "drafts"
+        self._write(drafts)
+        monkeypatch.chdir(tmp_path)
+        self._run(
+            monkeypatch, "--dry-run", "--file", "my-article.md", str(drafts)
+        )
+        assert "[DRY RUN] my-article" in capsys.readouterr().out
+
+    def test_file_with_relative_subpath(self, tmp_path, monkeypatch, capsys):
+        self._write(tmp_path / "drafts")
+        monkeypatch.chdir(tmp_path)
+        self._run(monkeypatch, "--file", "drafts/my-article.md", "--dry-run")
+        assert "[DRY RUN] my-article" in capsys.readouterr().out
+
+    def test_file_absolute_path_ignores_default_directory(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        article = self._write(tmp_path / "elsewhere")
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        monkeypatch.chdir(empty)
+        self._run(monkeypatch, "--file", str(article), "--dry-run")
+        assert "[DRY RUN] my-article" in capsys.readouterr().out
+
+    def test_missing_file_exits_one_with_message(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        monkeypatch.chdir(tmp_path)
+        with pytest.raises(SystemExit) as exc:
+            self._run(monkeypatch, "--file", "nope.md", "--dry-run")
+        assert exc.value.code == 1
+        assert "Article not found" in capsys.readouterr().err
+
+    def test_default_writes_output_under_cwd(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        self._write(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        self._run(monkeypatch, "--file", "my-article.md")
+        assert (tmp_path / "output" / "my-article" / "article.html").exists()
+
+    def test_help_documents_default(self, monkeypatch, capsys):
+        with pytest.raises(SystemExit) as exc:
+            self._run(monkeypatch, "--help")
+        assert exc.value.code == 0
+        out = " ".join(capsys.readouterr().out.split())
+        assert "default: the current directory" in out
