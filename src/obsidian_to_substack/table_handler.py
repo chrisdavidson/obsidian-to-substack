@@ -12,6 +12,7 @@ from .table_render import render_table
 logger = logging.getLogger(__name__)
 
 TABLE_ROW_PATTERN = re.compile(r"^\s*\|.*\|\s*$")
+SEPARATOR_PATTERN = re.compile(r"^\s*\|[\s:_-]+(\|[\s:_-]+)+\|\s*$")
 
 # The placeholder this module emits when a table fails to render, and the
 # rule preflight uses to detect it. They share this definition on purpose:
@@ -28,7 +29,7 @@ TABLE_PLACEHOLDER_PATTERN = re.compile(r"^\s*TABLE \d+:")
 def table_placeholder(table_num: int) -> str:
     """Return the HTML comment standing in for a table that failed to render."""
     return f"<!-- TABLE {table_num}: render failed, see table-{table_num}.csv -->"
-SEPARATOR_PATTERN = re.compile(r"^\s*\|[\s:_-]+(\|[\s:_-]+)+\|\s*$")
+
 
 BOLD_PATTERN = re.compile(r"\*\*(.+?)\*\*")
 ITALIC_PATTERN = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")
