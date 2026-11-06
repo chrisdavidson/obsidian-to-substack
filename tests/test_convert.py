@@ -17,6 +17,7 @@ from obsidian_to_substack.convert import (
     convert_directory,
     copy_html_to_clipboard,
     copy_title,
+    format_result_lines,
     main,
     slugify,
 )
@@ -72,6 +73,34 @@ class TestConvertArticle:
             assert len(result["png_files"]) >= 1
             for png in result["png_files"]:
                 assert Path(png).exists()
+
+    def test_png_files_names_a_raster_beside_its_svg_once(self, tmp_path):
+        """svg/ holding a.svg AND a.png, with the article embedding a.png.
+
+        export_all_svgs writes output/a.png and copy_raster_embeds then copies
+        a.png onto the same path; image_map holds both keys. The manifest
+        describes files, so the path must appear once.
+        """
+        from PIL import Image
+
+        svg_dir = tmp_path / "svg"
+        svg_dir.mkdir()
+        (svg_dir / "a.svg").write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">'
+            '<rect width="10" height="10" fill="red"/></svg>'
+        )
+        Image.new("RGB", (10, 10), "blue").save(svg_dir / "a.png")
+        article = tmp_path / "my-article.md"
+        article.write_text("# My Article\n\nProse.\n\n![[a.png]]\n")
+
+        result = convert_article(str(article), str(tmp_path / "out"), svg_dir=str(svg_dir))
+
+        png_files = result["png_files"]
+        on_disk = list(Path(result["output_dir"]).glob("*.png"))
+        assert len(png_files) == len(set(png_files))
+        assert len(png_files) == len(on_disk)
+        line = next(l for l in format_result_lines(result) if "PNGs:" in l)
+        assert f"{len(on_disk)} images" in line
 
     def test_every_local_img_src_is_named_in_png_files(self):
         """png_files is the manifest of what the run wrote, or it is nothing.
