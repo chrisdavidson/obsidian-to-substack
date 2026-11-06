@@ -402,7 +402,16 @@ def convert_article(
         # written and referenced but reported by neither png_files nor a
         # preflight warning (missing_image only fires for a src ABSENT from
         # the output directory, and these are present).
-        "png_files": list(image_map.values()) + table_result.png_files,
+        #
+        # De-duplicated, first-seen order. image_map is keyed by embed name, so
+        # `a.svg` (export) and `a.png` (raster copy) are two keys mapping to one
+        # output path; copy_raster_embeds runs after the export and overwrites
+        # it, so the file on disk is the copied raster and the manifest must
+        # name it once: it describes files, not embeds. Both producers emit the
+        # same path string for the same file, so string equality suffices.
+        "png_files": list(
+            dict.fromkeys(list(image_map.values()) + table_result.png_files)
+        ),
         "table_count": len(tables),
         "output_dir": str(article_output),
         "warnings": warnings,
