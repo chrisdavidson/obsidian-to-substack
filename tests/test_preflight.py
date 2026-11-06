@@ -4,6 +4,7 @@ Each check corresponds to a defect recovered in docs/FINDINGS.md. A defect
 found once should never again be rediscovered by pasting and squinting.
 """
 
+import pytest
 from PIL import Image
 
 from obsidian_to_substack.preflight import MAX_IMAGE_WIDTH, check, report
@@ -33,6 +34,13 @@ class TestPlaceholderCheck:
 
     def test_unrelated_comment_does_not_warn(self, tmp_path):
         html = "<body><!-- just a note --><p>x</p></body>"
+        assert not any(w.check == "table_placeholder" for w in check(html, tmp_path))
+
+    @pytest.mark.parametrize(
+        "text", [" note: replaces the markdown table ", "(Replaces the markdown table.)"]
+    )
+    def test_authored_comment_mentioning_table_does_not_warn(self, tmp_path, text):
+        html = f"<body><!--{text}--><p>x</p></body>"
         assert not any(w.check == "table_placeholder" for w in check(html, tmp_path))
 
 
