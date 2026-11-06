@@ -16,6 +16,7 @@ from typing import Sequence
 from bs4 import BeautifulSoup, Comment
 
 from obsidian_to_substack import fidelity
+from obsidian_to_substack.table_handler import TABLE_PLACEHOLDER_PATTERN
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,8 @@ class Warning_:
 def _check_placeholder_comments(soup: BeautifulSoup) -> list[Warning_]:
     warnings = []
     for comment in soup.find_all(string=lambda t: isinstance(t, Comment)):
-        if "TABLE" in str(comment).upper():
+        # Shared with the emitter in table_handler; see the note there.
+        if TABLE_PLACEHOLDER_PATTERN.match(str(comment)):
             warnings.append(
                 Warning_(
                     "table_placeholder",

@@ -7,6 +7,10 @@ found once should never again be rediscovered by pasting and squinting.
 import pytest
 from PIL import Image
 
+from obsidian_to_substack.table_handler import (
+    TABLE_PLACEHOLDER_PATTERN,
+    table_placeholder,
+)
 from obsidian_to_substack.preflight import MAX_IMAGE_WIDTH, check, report
 from obsidian_to_substack.render_html import (
     render_to_html,
@@ -35,6 +39,16 @@ class TestPlaceholderCheck:
     def test_unrelated_comment_does_not_warn(self, tmp_path):
         html = "<body><!-- just a note --><p>x</p></body>"
         assert not any(w.check == "table_placeholder" for w in check(html, tmp_path))
+
+    def test_emitted_placeholder_warns(self, tmp_path):
+        html = f"<body>{table_placeholder(3)}<p>x</p></body>"
+        found = [w for w in check(html, tmp_path) if w.check == "table_placeholder"]
+        assert found and found[0].requirement == "TBL-01"
+
+    @pytest.mark.parametrize("n", [1, 12])
+    def test_pattern_matches_emitted_inner_text(self, n):
+        inner = table_placeholder(n)[len("<!--") : -len("-->")]
+        assert TABLE_PLACEHOLDER_PATTERN.match(inner)
 
     @pytest.mark.parametrize(
         "text", [" note: replaces the markdown table ", "(Replaces the markdown table.)"]

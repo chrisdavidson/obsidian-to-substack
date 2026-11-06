@@ -12,6 +12,22 @@ from .table_render import render_table
 logger = logging.getLogger(__name__)
 
 TABLE_ROW_PATTERN = re.compile(r"^\s*\|.*\|\s*$")
+
+# The placeholder this module emits when a table fails to render, and the
+# rule preflight uses to detect it. They share this definition on purpose:
+# change one and you must change the other. The pattern is anchored to the
+# "TABLE <n>:" prefix rather than the full "render failed" text so the
+# historical shape ("TABLE 1: See table-1.csv", which earlier releases
+# emitted and the tests pin) is still caught. It is deliberately NOT a
+# case-insensitive substring match: that fired on an author's own comment
+# "(Replaces the markdown table.)" and the v1.2 gate then refused --copy.
+# Widening it regresses that. Matched against the comment's inner text.
+TABLE_PLACEHOLDER_PATTERN = re.compile(r"^\s*TABLE \d+:")
+
+
+def table_placeholder(table_num: int) -> str:
+    """Return the HTML comment standing in for a table that failed to render."""
+    return f"<!-- TABLE {table_num}: render failed, see table-{table_num}.csv -->"
 SEPARATOR_PATTERN = re.compile(r"^\s*\|[\s:_-]+(\|[\s:_-]+)+\|\s*$")
 
 BOLD_PATTERN = re.compile(r"\*\*(.+?)\*\*")
@@ -190,9 +206,7 @@ def replace_tables_with_images(
                 table_num,
                 exc,
             )
-            lines[start:end + 1] = [
-                f"<!-- TABLE {table_num}: render failed, see table-{table_num}.csv -->"
-            ]
+            lines[start:end + 1] = [table_placeholder(table_num)]
             continue
 
         # Recorded only past the except branch — a render that raised wrote no
