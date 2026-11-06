@@ -5,6 +5,30 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.5] — 2026-11-06
+
+### Fixed
+
+- **TBL-01 false positive on authored comments that mention a table.** The
+  `table_placeholder` check fired on any HTML comment containing the word
+  "table" in any case, so a note to self reading *"(Replaces the markdown
+  table.)"* was reported as a failed table render and the v1.2 gate refused
+  `--copy` on an article with no tables at all. The check now matches only the
+  placeholder the pipeline itself emits (`TABLE <n>:`). The emitter and the
+  detector share one definition in `table_handler.py`, so they cannot drift.
+- **`png_files` listed some images twice.** When an article embeds
+  `svg/<slug>/foo.png` and `foo.svg` sits beside it, the SVG export and the
+  raster copy both write `foo.png` to the same output path, and both were
+  reported. The manifest now names each file once, in first-written order,
+  and the CLI's `PNGs:` count matches the files on disk (5, not 10, on the
+  draft that surfaced it). Same class of defect as v1.3.1: the result dict
+  describing what was written, wrongly.
+
+Both were found on a real draft, *The Highlight Is Evidence: Chain of Custody
+from Published Paper to Final Report*. Its remaining GRD-02 warning was correct
+— caption notes held in an HTML comment rather than `%% … %%` — and was
+resolved in the vault, not in the tool.
+
 ## [1.4.4] — 2026-10-04
 
 ### Changed

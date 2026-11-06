@@ -28,8 +28,10 @@ comment content) reached a live published post without the author noticing on re
 
 ### Current State
 
-**v1.4.2 shipped 2026-09-03**, the current release. Eight public releases so far, each one
-tagged with a wheel and sdist attached, none of them on PyPI:
+**v1.4.5 shipped 2026-11-06**, the current release. Eleven tags so far, none of them on
+PyPI. Every one has a GitHub release with a wheel and sdist attached **except v1.4.4**,
+which was tagged and pushed on 2026-10-04 but never given a release; found while cutting
+v1.4.5:
 
 - **v1.0 (2026-08-08)** — 21/21 requirements, audit passed. Core Value 1 met: tables, SVG
   diagrams, images, wikilinks, formatting and footnotes all survive into a Substack draft,
@@ -61,6 +63,16 @@ tagged with a wheel and sdist attached, none of them on PyPI:
   glyph for U+2011, which the corpus uses, so a published table drew `Off‑the‑shelf` as
   replacement boxes. Fonts now come from fontconfig. `FontSet` had no tests at all, which
   is how that survived seven releases.
+- **v1.4.3 (2026-09-03)** — no code; records the live paste that lifted the PAUSE.
+- **v1.4.4 (2026-10-04)** — the `directory` argument defaults to the current directory;
+  GRD-02 no longer reports the dropped title H1 when the title contains an apostrophe
+  (smarty curls it in the HTML, the source keeps it straight).
+- **v1.4.5 (2026-11-06)** — two defects from one real draft. TBL-01 fired on any comment
+  containing "table" and refused `--copy` on an article with no tables; it now matches only
+  the emitted placeholder, whose shape `table_handler` and `preflight` share. And
+  `png_files` named a raster twice when it sat beside its own `.svg` — the second
+  manifest defect after v1.3.1. `tools/substack_diff/diagnose.py` still carries the loose
+  "TABLE" match; it feeds `docs/FINDINGS.md`, so it was left for a run with the vault.
 
 The fix history that once lived only in the author's memory is `docs/FINDINGS-MANUAL.md`,
 regenerated into `docs/FINDINGS.md` by `tools/substack_diff`.
@@ -171,7 +183,7 @@ machine's answer.
   headed to GitHub and planning is local workflow state. GSD commit steps on planning
   files are expected no-ops.
 
-- **Testing**: 438 tests currently pass (`uv run --extra dev pytest -q` — the bare
+- **Testing**: 454 tests currently pass (`uv run --extra dev pytest -q` — the bare
   `pytest` is not on PATH); new defects get pinned by tests, per the author's "fixes +
   automated guards" decision. This count goes stale — run the suite rather than trusting
   the number. **Tests must not read their host**: `tests/conftest.py` clears the
