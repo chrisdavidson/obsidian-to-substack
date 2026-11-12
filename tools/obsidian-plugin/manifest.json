@@ -1,0 +1,9 @@
+{
+  "id": "substack-convert",
+  "name": "Convert to Substack",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Runs obsidian-to-substack on a note and puts the result on the clipboard.",
+  "author": "obsidian-to-substack",
+  "isDesktopOnly": true
+}
