@@ -142,6 +142,27 @@ embedded as an image, which is what the composer does accept. The same table
 is also written out as a CSV, a standalone data sidecar you can open in a
 spreadsheet or reuse elsewhere.
 
+## Running from Obsidian
+
+A private Obsidian plugin in `tools/obsidian-plugin/` runs the converter on a
+note without leaving Obsidian. It is not in the community directory; install
+it by hand. Run `uv sync` in this repo, then link the plugin into your vault
+and enable "Convert to Substack" under Settings → Community plugins:
+
+```bash
+ln -s "$PWD/tools/obsidian-plugin" "<vault>/.obsidian/plugins/substack-convert"
+```
+
+- **Convert current note and copy** runs `--copy` on the open note. Default
+  hotkey Ctrl+Alt+S (Cmd+Alt+S on macOS).
+- **Convert current note and copy despite warnings (--force)** is the
+  escape hatch for a refused run. It has no default hotkey.
+- Right-clicking a `.md` file offers **Convert to Substack**.
+
+Output is written to `obsidian-to-substack/` under the system temp directory,
+never into the vault. A refusal shows the preflight warnings in a notice that
+stays on screen until you dismiss it.
+
 ## What gets transformed
 
 - **Frontmatter** — parsed out of the body and preserved in `metadata.json`; the
