@@ -5,6 +5,27 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.6] — 2026-11-12
+
+### Added
+
+- **Run the converter from inside Obsidian.** A private Obsidian plugin,
+  `tools/obsidian-plugin/` (`substack-convert`, plain JavaScript, no build
+  step), runs `--copy` on a note: press **Ctrl+Alt+S** on the open note, or
+  right-click it and choose **Convert to Substack** (core file explorer, the
+  note's ⋯ menu, and Notebook Navigator). A pop-up shows the title and image
+  count on success; a refused run shows the preflight warnings and stays on
+  screen until dismissed. *Convert … despite warnings (--force)* is in the
+  command palette only, with no hotkey, so overriding the gate is never one
+  keystroke. Output goes to `$TMPDIR/obsidian-to-substack`, outside the vault.
+  Install by symlinking the folder into `<vault>/.obsidian/plugins/` — see the
+  README. The plugin finds the tool through its own symlink rather than a
+  hardcoded path or `uv`, and fails loudly if the venv is missing.
+
+Verified live in Obsidian 1.15.1: a clean article pasted into Substack with no
+repair, and an article with a GRD-02 warning was refused with nothing copied.
+No change to the converter itself.
+
 ## [1.4.5] — 2026-11-06
 
 ### Fixed

@@ -28,7 +28,7 @@ comment content) reached a live published post without the author noticing on re
 
 ### Current State
 
-**v1.4.5 shipped 2026-11-06**, the current release. Eleven tags so far, none of them on
+**v1.4.6 shipped 2026-11-12**, the current release. Twelve tags so far, none of them on
 PyPI. Every one has a GitHub release with a wheel and sdist attached **except v1.4.4**,
 which was tagged and pushed on 2026-10-04 but never given a release; found while cutting
 v1.4.5:
@@ -73,6 +73,17 @@ v1.4.5:
   `png_files` named a raster twice when it sat beside its own `.svg` — the second
   manifest defect after v1.3.1. `tools/substack_diff/diagnose.py` still carries the loose
   "TABLE" match; it feeds `docs/FINDINGS.md`, so it was left for a run with the vault.
+- **v1.4.6 (2026-11-12)** — the converter runs from inside Obsidian. A private plugin,
+  `tools/obsidian-plugin/` (plain JS, no build), symlinked into
+  `BrainBank/.obsidian/plugins/substack-convert`: Ctrl+Alt+S or right-click → *Convert to
+  Substack* runs `--copy` on that note, output to `$TMPDIR/obsidian-to-substack`; the
+  `--force` variant is palette-only on purpose. It calls the venv entry point found through
+  its own symlink, not `uv` (a desktop-launched Obsidian may lack a shell PATH). Piped output
+  is safe only because `_run_selection_owner` keeps the clipboard daemon off the pipes.
+  Live-verified by the author: paste needed no repair; the menu item also appears in
+  Notebook Navigator. No package code changed. Note: `Notice.hide()` animates via
+  requestAnimationFrame, so with Obsidian on an unviewed Hyprland workspace a notice lingers
+  until the window is shown — an off-screen testing artifact, not a defect.
 
 The fix history that once lived only in the author's memory is `docs/FINDINGS-MANUAL.md`,
 regenerated into `docs/FINDINGS.md` by `tools/substack_diff`.
@@ -183,7 +194,7 @@ machine's answer.
   headed to GitHub and planning is local workflow state. GSD commit steps on planning
   files are expected no-ops.
 
-- **Testing**: 454 tests currently pass (`uv run --extra dev pytest -q` — the bare
+- **Testing**: 468 tests currently pass (`uv run --extra dev pytest -q` — the bare
   `pytest` is not on PATH); new defects get pinned by tests, per the author's "fixes +
   automated guards" decision. This count goes stale — run the suite rather than trusting
   the number. **Tests must not read their host**: `tests/conftest.py` clears the
@@ -218,7 +229,8 @@ uv run python -m tools.fidelity_sweep [--show]    # corpus fidelity census
 External surfaces: the clipboard, via one native tool per platform (`xclip` on Linux —
 body to CLIPBOARD as `text/html`, resolved title to PRIMARY; `osascript` on macOS;
 PowerShell on Windows, both body-only); the Obsidian vault, read-only and outside the
-repo; and Substack itself, which has **no API for rendering checks** — that is the binding
+repo (the one exception is the `substack-convert` plugin symlink under `.obsidian/plugins`);
+the Obsidian app itself, which runs the CLI through that plugin; and Substack itself, which has **no API for rendering checks** — that is the binding
 constraint on the whole project.
 <!-- GSD:stack-end -->
 
